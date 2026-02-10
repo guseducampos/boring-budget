@@ -41,6 +41,8 @@ The format follows a lightweight Keep a Changelog style.
 
 - `AGENTS.md` now enforces atomic commit policy.
 - `README.md` updated with quick-start instructions and contract docs link.
+- Migration engine switched from custom raw SQL runner to Goose (`github.com/pressly/goose/v3`).
+- Migration file `migrations/0001_initial.sql` converted to Goose `Up/Down` format.
 
 ### Verified
 
