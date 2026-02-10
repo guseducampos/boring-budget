@@ -194,3 +194,10 @@ Do not add unrelated features without updating:
 - `docs/PRODUCT_PLAN.md`
 - `docs/TECHNICAL_BLUEPRINT.md`
 - this `AGENTS.md` (if rules change)
+
+## 16) Git Commit Policy
+
+- Commits must be atomic:
+  - each commit should contain one logical change
+  - avoid mixing unrelated refactors/features/fixes in the same commit
+  - commit messages should clearly describe that single unit of change
