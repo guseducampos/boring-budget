@@ -1,7 +1,5 @@
-CREATE TABLE IF NOT EXISTS schema_migrations (
-    filename TEXT PRIMARY KEY,
-    applied_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
+-- +goose Up
+-- +goose StatementBegin
 
 CREATE TABLE IF NOT EXISTS categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,3 +126,40 @@ CREATE TABLE IF NOT EXISTS audit_events (
 
 CREATE INDEX IF NOT EXISTS idx_audit_events_entity_time
     ON audit_events (entity_type, entity_id, created_at_utc);
+
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+
+DROP INDEX IF EXISTS idx_audit_events_entity_time;
+DROP TABLE IF EXISTS audit_events;
+
+DROP INDEX IF EXISTS idx_fx_rate_snapshot_unique;
+DROP TABLE IF EXISTS fx_rate_snapshots;
+
+DROP TABLE IF EXISTS settings;
+
+DROP INDEX IF EXISTS idx_monthly_cap_changes_month_changed;
+DROP TABLE IF EXISTS monthly_cap_changes;
+
+DROP INDEX IF EXISTS idx_monthly_caps_month;
+DROP TABLE IF EXISTS monthly_caps;
+
+DROP INDEX IF EXISTS idx_transaction_labels_label_active;
+DROP INDEX IF EXISTS idx_transaction_labels_unique_active;
+DROP TABLE IF EXISTS transaction_labels;
+
+DROP INDEX IF EXISTS idx_transactions_deleted_date;
+DROP INDEX IF EXISTS idx_transactions_category;
+DROP INDEX IF EXISTS idx_transactions_type;
+DROP INDEX IF EXISTS idx_transactions_date;
+DROP TABLE IF EXISTS transactions;
+
+DROP INDEX IF EXISTS idx_labels_name_active;
+DROP TABLE IF EXISTS labels;
+
+DROP INDEX IF EXISTS idx_categories_name_active;
+DROP TABLE IF EXISTS categories;
+
+-- +goose StatementEnd

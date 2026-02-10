@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/pressly/goose/v3"
 )
 
 func TestOpenSetsExpectedPragmas(t *testing.T) {
@@ -46,18 +48,26 @@ func TestRunMigrationsIsIdempotent(t *testing.T) {
 	migrationsDir := filepath.Join(tempDir, "migrations")
 
 	if err := writeFile(filepath.Join(migrationsDir, "0001_create_demo.sql"), `
+-- +goose Up
 CREATE TABLE IF NOT EXISTS demo_items (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	name TEXT NOT NULL
-);`); err != nil {
+);
+-- +goose Down
+DROP TABLE IF EXISTS demo_items;
+`); err != nil {
 		t.Fatalf("write migration 0001: %v", err)
 	}
 
 	if err := writeFile(filepath.Join(migrationsDir, "0002_create_other.sql"), `
+-- +goose Up
 CREATE TABLE IF NOT EXISTS other_items (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	value TEXT NOT NULL
-);`); err != nil {
+);
+-- +goose Down
+DROP TABLE IF EXISTS other_items;
+`); err != nil {
 		t.Fatalf("write migration 0002: %v", err)
 	}
 
@@ -72,23 +82,23 @@ CREATE TABLE IF NOT EXISTS other_items (
 	}
 	assertTableExists(t, ctx, db, "demo_items")
 	assertTableExists(t, ctx, db, "other_items")
-	assertMigrationCount(t, ctx, db, 2)
+	assertGooseVersion(t, ctx, db, 2)
 
 	if err := RunMigrations(ctx, db, migrationsDir); err != nil {
 		t.Fatalf("run migrations second pass: %v", err)
 	}
-	assertMigrationCount(t, ctx, db, 2)
+	assertGooseVersion(t, ctx, db, 2)
 }
 
-func assertMigrationCount(t *testing.T, ctx context.Context, db *sql.DB, expected int) {
+func assertGooseVersion(t *testing.T, ctx context.Context, db *sql.DB, expected int64) {
 	t.Helper()
 
-	var count int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations;").Scan(&count); err != nil {
-		t.Fatalf("count schema_migrations: %v", err)
+	version, err := goose.GetDBVersionContext(ctx, db)
+	if err != nil {
+		t.Fatalf("read goose db version: %v", err)
 	}
-	if count != expected {
-		t.Fatalf("expected %d applied migrations, got %d", expected, count)
+	if version != expected {
+		t.Fatalf("expected goose version %d, got %d", expected, version)
 	}
 }
 
