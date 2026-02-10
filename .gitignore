@@ -21,8 +21,8 @@ tmp/
 bin/
 build/
 dist/
-budgetto
-budgetto.exe
+/budgetto
+/budgetto.exe
 *.test
 *.out
 coverage.out
