@@ -1,0 +1,95 @@
+{
+  "ok": true,
+  "data": {
+    "period": {
+      "scope": "monthly",
+      "month_key": "2026-02",
+      "from_utc": "2026-02-01T00:00:00Z",
+      "to_utc": "2026-02-28T23:59:59Z"
+    },
+    "grouping": "month",
+    "earnings": {
+      "by_currency": [
+        {
+          "currency_code": "USD",
+          "total_minor": 250000
+        }
+      ],
+      "groups": [
+        {
+          "period_key": "2026-02",
+          "currency_code": "USD",
+          "total_minor": 250000
+        }
+      ]
+    },
+    "spending": {
+      "by_currency": [
+        {
+          "currency_code": "USD",
+          "total_minor": 62000
+        }
+      ],
+      "groups": [
+        {
+          "period_key": "2026-02",
+          "currency_code": "USD",
+          "total_minor": 62000,
+          "orphan_total_minor": 8000
+        }
+      ]
+    },
+    "net": {
+      "by_currency": [
+        {
+          "currency_code": "USD",
+          "total_minor": 188000
+        }
+      ]
+    },
+    "cap_status": [
+      {
+        "month_key": "2026-02",
+        "currency_code": "USD",
+        "cap_amount_minor": 50000,
+        "spend_total_minor": 62000,
+        "overspend_minor": 12000,
+        "is_exceeded": true
+      }
+    ],
+    "cap_changes": [
+      {
+        "id": "capchg_20260210_0001",
+        "month_key": "2026-02",
+        "old_amount_minor": 45000,
+        "new_amount_minor": 50000,
+        "currency_code": "USD",
+        "changed_at_utc": "2026-02-10T14:35:00Z"
+      }
+    ],
+    "balance_views": {
+      "lifetime": {
+        "by_currency": [
+          {
+            "currency_code": "USD",
+            "net_minor": 245000
+          }
+        ]
+      },
+      "range": {
+        "by_currency": [
+          {
+            "currency_code": "USD",
+            "net_minor": 188000
+          }
+        ]
+      }
+    }
+  },
+  "warnings": [],
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "2026-02-10T14:36:00Z"
+  }
+}

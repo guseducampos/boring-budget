@@ -16,6 +16,7 @@ The project is designed for both humans and LLM agents, with deterministic comma
 
 - Product plan: `docs/PRODUCT_PLAN.md`
 - Technical blueprint: `docs/TECHNICAL_BLUEPRINT.md`
+- Agent contracts: `docs/contracts/README.md`
 - Contributor/agent rules: `AGENTS.md`
 
 ## Key Principles
@@ -26,10 +27,25 @@ The project is designed for both humans and LLM agents, with deterministic comma
 - Deletes are non-destructive where possible.
 - Core commands support both human and JSON output modes.
 
+## Quick Start
+
+1. Run in human mode:
+```bash
+go run ./cmd/budgetto --output human
+```
+2. Run in JSON mode:
+```bash
+go run ./cmd/budgetto --output json
+```
+3. Optional explicit paths:
+```bash
+go run ./cmd/budgetto --db-path "$HOME/.budgetto/budgetto.db" --migrations-dir "./migrations"
+```
+
 ## Current Status
 
-Planning and architecture are defined. Next phase is project scaffolding:
-1. Go module and CLI skeleton
-2. SQLite migrations and WAL setup
-3. Core domain/service/store layers
-4. Contracted JSON responses for agent integration
+Foundation milestone is implemented:
+1. Go module and Cobra CLI scaffold
+2. SQLite bootstrap with WAL + foreign keys
+3. Migration runner and initial schema
+4. Initial agent contract docs (JSON envelope examples, exit codes, error catalog)

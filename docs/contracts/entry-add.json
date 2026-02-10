@@ -1,0 +1,46 @@
+{
+  "ok": true,
+  "data": {
+    "entry": {
+      "id": "txn_20260210_0001",
+      "type": "expense",
+      "amount_minor": 12000,
+      "currency_code": "USD",
+      "transaction_date_utc": "2026-02-10T14:30:00Z",
+      "category_id": "cat_food",
+      "labels": [
+        "dining",
+        "work-lunch"
+      ],
+      "note": "Team lunch",
+      "created_at_utc": "2026-02-10T14:30:02Z",
+      "updated_at_utc": "2026-02-10T14:30:02Z"
+    }
+  },
+  "warnings": [
+    {
+      "code": "CAP_EXCEEDED",
+      "message": "Expense saved, monthly cap exceeded.",
+      "details": {
+        "month_key": "2026-02",
+        "cap_amount": {
+          "amount_minor": 50000,
+          "currency_code": "USD"
+        },
+        "new_spend_total": {
+          "amount_minor": 62000,
+          "currency_code": "USD"
+        },
+        "overspend_amount": {
+          "amount_minor": 12000,
+          "currency_code": "USD"
+        }
+      }
+    }
+  ],
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "2026-02-10T14:30:02Z"
+  }
+}

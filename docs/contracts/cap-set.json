@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "data": {
+    "cap": {
+      "month_key": "2026-02",
+      "amount_minor": 50000,
+      "currency_code": "USD",
+      "updated_at_utc": "2026-02-10T14:35:00Z"
+    },
+    "cap_change": {
+      "id": "capchg_20260210_0001",
+      "month_key": "2026-02",
+      "old_amount_minor": 45000,
+      "new_amount_minor": 50000,
+      "currency_code": "USD",
+      "changed_at_utc": "2026-02-10T14:35:00Z"
+    }
+  },
+  "warnings": [],
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "2026-02-10T14:35:00Z"
+  }
+}
