@@ -1,0 +1,42 @@
+# macOS / OS noise
+.DS_Store
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs and temp files
+*.log
+*.tmp
+tmp/
+
+# Go build artifacts
+bin/
+build/
+dist/
+budgetto
+budgetto.exe
+*.test
+*.out
+coverage.out
+.coverprofile
+coverage/
+
+# Go tool caches (local only)
+.cache/
+.gocache/
+
+# SQLite runtime/data files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+data/
