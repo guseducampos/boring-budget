@@ -21,6 +21,7 @@ If there is conflict, `TECHNICAL_BLUEPRINT.md` wins for engineering decisions.
 - App type: CLI
 - Database: SQLite
 - Storage mode: local-first
+- Migrations: Goose (`github.com/pressly/goose/v3`)
 
 ## 3) Architecture Rules
 
@@ -120,6 +121,7 @@ Maintain auditability:
 ## 9) Database and Concurrency Rules
 
 - Enable SQLite WAL mode.
+- Use Goose for all schema migrations (no custom/raw migration runner logic).
 - Use DB transactions for all multi-step writes.
 - Serialize writes when needed for concurrent agent operations.
 - Add indexes for reporting/filter hot paths (date/type/category/label joins).
