@@ -116,6 +116,10 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/cli/output/exit_code_test.go`
 - Data CLI regression tests:
   - `internal/cli/data_test.go`
+- CSV portability regression coverage for `data` CLI contracts:
+  - entry export/import idempotency in CSV mode
+  - CSV label delimiter parsing (`label_ids` pipe-separated values)
+  - CSV report export shape validation
 - Golden JSON contract coverage for key agent commands:
   - `internal/cli/json_contracts_golden_test.go`
   - `internal/cli/testdata/json_contracts/*`
