@@ -18,7 +18,7 @@ git push origin v0.1.0
 
 2. GitHub Actions `Release` workflow will:
    - run tests
-   - build archives for macOS/Linux/Windows
+   - build archives for macOS/Linux
    - publish GitHub release artifacts + checksums
    - update Homebrew formula in the tap repo
 

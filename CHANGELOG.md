@@ -157,8 +157,8 @@ The format follows a lightweight Keep a Changelog style.
   - `migrations/0002_transaction_labels_transaction_active_index.sql`
 - CI scaffolding for cross-platform builds and tests:
   - `.github/workflows/ci.yml`
-  - test matrix on Linux/macOS/Windows
-  - build artifacts for `darwin`, `linux`, and `windows`
+  - test matrix on Linux/macOS
+  - build artifacts for `darwin` and `linux`
 - Release/Homebrew scaffolding:
   - `.github/workflows/release.yml`
   - `.goreleaser.yaml`

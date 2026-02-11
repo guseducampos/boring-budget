@@ -46,7 +46,6 @@ It is designed for two audiences:
 - Download the artifact for your platform from CI/release outputs:
   - `darwin/amd64`, `darwin/arm64`
   - `linux/amd64`, `linux/arm64`
-  - `windows/amd64`
 - Move the binary to your `PATH` and make it executable on macOS/Linux:
 
 ```bash
@@ -272,11 +271,10 @@ go test ./...
 
 - GitHub Actions workflow: `.github/workflows/ci.yml`
 - On `pull_request` and `push` to `master`, CI runs:
-  - tests on `ubuntu-latest`, `macos-latest`, `windows-latest`
+  - tests on `ubuntu-latest`, `macos-latest`
   - cross-platform builds for:
     - `darwin/amd64`, `darwin/arm64`
     - `linux/amd64`, `linux/arm64`
-    - `windows/amd64`
 - Build artifacts are uploaded per target with SHA256 checksum files.
 - Release workflow: `.github/workflows/release.yml`
   - Triggered on `v*` tags
