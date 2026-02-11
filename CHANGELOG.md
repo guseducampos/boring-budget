@@ -209,6 +209,9 @@ The format follows a lightweight Keep a Changelog style.
 - `entry list` now supports `--note-contains` for case-insensitive note/description substring filtering.
 - README install/usage now defaults to the universal `boring-budget` binary (with `go run` retained as development-only path).
 - README refreshed with a more human-first narrative and onboarding flow while keeping agent contract and command references intact.
+- Repository metadata polish:
+  - README badges for CI status, latest release version, and license
+  - added MIT `LICENSE`
 - Report category label resolution now prefers ID-targeted category loading (`ListByIDs`) to avoid full category-table scans.
 - `data restore` now uses command context, validates post-restore DB integrity, and rolls back to a pre-restore snapshot when validation fails.
 - `docs/contracts/*.json` examples are now normalized to the same canonical payloads asserted by CLI golden tests.

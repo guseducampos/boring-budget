@@ -1,5 +1,9 @@
 # boring-budget
 
+[![Build Status](https://github.com/guseducampos/boring-budget/actions/workflows/ci.yml/badge.svg)](https://github.com/guseducampos/boring-budget/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/v/release/guseducampos/boring-budget?display_name=tag)](https://github.com/guseducampos/boring-budget/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 `boring-budget` is a local-first budgeting CLI built with Go + SQLite.
 
 It is intentionally simple:
@@ -303,3 +307,7 @@ Before opening a PR:
 - Product plan: `docs/PRODUCT_PLAN.md`
 - Technical blueprint: `docs/TECHNICAL_BLUEPRINT.md`
 - Changelog: `CHANGELOG.md`
+
+## License
+
+MIT. See `LICENSE`.
