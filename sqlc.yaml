@@ -8,6 +8,7 @@ sql:
       - "internal/store/sqlite/queries/entry.sql"
       - "internal/store/sqlite/queries/cap.sql"
       - "internal/store/sqlite/queries/fx.sql"
+      - "internal/store/sqlite/queries/settings.sql"
     gen:
       go:
         package: "sqlc"

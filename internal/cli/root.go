@@ -93,6 +93,8 @@ func NewRootCmd() *cobra.Command {
 		NewCapCmd(opts),
 		NewReportCmd(opts),
 		NewBalanceCmd(opts),
+		NewSetupCmd(opts),
+		NewDataCmd(opts),
 	)
 
 	return cmd

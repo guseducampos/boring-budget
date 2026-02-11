@@ -487,7 +487,8 @@ func codeFromReportingError(err error) string {
 	case errors.Is(err, domain.ErrCategoryNotFound),
 		errors.Is(err, domain.ErrLabelNotFound),
 		errors.Is(err, domain.ErrEntryNotFound),
-		errors.Is(err, domain.ErrCapNotFound):
+		errors.Is(err, domain.ErrCapNotFound),
+		errors.Is(err, domain.ErrSettingsNotFound):
 		return "NOT_FOUND"
 	default:
 		message := strings.ToLower(err.Error())
@@ -538,6 +539,8 @@ func messageFromReportingError(err error) string {
 		return "entry not found"
 	case errors.Is(err, domain.ErrCapNotFound):
 		return "cap not found"
+	case errors.Is(err, domain.ErrSettingsNotFound):
+		return "settings not found"
 	default:
 		message := strings.ToLower(err.Error())
 		if strings.Contains(message, "unique constraint") || strings.Contains(message, "constraint failed") {
