@@ -140,6 +140,7 @@ func TestEntryRepoListFiltersByTypeCategoryAndDate(t *testing.T) {
 		CurrencyCode:       "USD",
 		TransactionDateUTC: "2026-02-01T00:00:00Z",
 		CategoryID:         &categoryA,
+		Note:               "Coffee beans",
 	}); err != nil {
 		t.Fatalf("add entry 1: %v", err)
 	}
@@ -149,6 +150,7 @@ func TestEntryRepoListFiltersByTypeCategoryAndDate(t *testing.T) {
 		CurrencyCode:       "USD",
 		TransactionDateUTC: "2026-02-15T00:00:00Z",
 		CategoryID:         &categoryA,
+		Note:               "Salary",
 	}); err != nil {
 		t.Fatalf("add entry 2: %v", err)
 	}
@@ -158,6 +160,7 @@ func TestEntryRepoListFiltersByTypeCategoryAndDate(t *testing.T) {
 		CurrencyCode:       "USD",
 		TransactionDateUTC: "2026-03-01T00:00:00Z",
 		CategoryID:         &categoryB,
+		Note:               "RENT",
 	}); err != nil {
 		t.Fatalf("add entry 3: %v", err)
 	}
@@ -187,6 +190,22 @@ func TestEntryRepoListFiltersByTypeCategoryAndDate(t *testing.T) {
 	}
 	if len(dateEntries) != 1 || dateEntries[0].Type != domain.EntryTypeIncome {
 		t.Fatalf("unexpected date range entries: %+v", dateEntries)
+	}
+
+	noteEntries, err := repo.List(ctx, domain.EntryListFilter{NoteContains: "fee"})
+	if err != nil {
+		t.Fatalf("list by note contains: %v", err)
+	}
+	if len(noteEntries) != 1 || noteEntries[0].Note != "Coffee beans" {
+		t.Fatalf("unexpected note filter entries: %+v", noteEntries)
+	}
+
+	upperNoteEntries, err := repo.List(ctx, domain.EntryListFilter{NoteContains: "rent"})
+	if err != nil {
+		t.Fatalf("list by note contains (case-insensitive): %v", err)
+	}
+	if len(upperNoteEntries) != 1 || upperNoteEntries[0].Note != "RENT" {
+		t.Fatalf("unexpected case-insensitive note filter entries: %+v", upperNoteEntries)
 	}
 }
 

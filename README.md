@@ -139,11 +139,11 @@ boring-budget label delete <id>
 ```bash
 boring-budget entry add --type income|expense --amount-minor <int> --currency <ISO> --date <RFC3339|YYYY-MM-DD> [--category-id <id>] [--label-id <id>] [--note <text>]
 boring-budget entry update <id> [--type ...] [--amount-minor ...] [--currency ...] [--date ...] [--category-id <id>|--clear-category] [--label-id <id>|--clear-labels] [--note <text>|--clear-note]
-boring-budget entry list [--type ...] [--category-id ...] [--from ...] [--to ...] [--label-id ...] [--label-mode any|all|none]
+boring-budget entry list [--type ...] [--category-id ...] [--from ...] [--to ...] [--note-contains <text>] [--label-id ...] [--label-mode any|all|none]
 boring-budget entry delete <id>
 ```
 
-Note: `--note` is an optional description field for entries.
+Note: `--note` is an optional description field for entries, and `entry list --note-contains` supports case-insensitive substring matching.
 
 ### Caps
 

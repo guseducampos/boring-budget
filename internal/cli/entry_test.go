@@ -110,6 +110,20 @@ func TestEntryCommandJSONLifecycleAndFilters(t *testing.T) {
 		t.Fatalf("expected date range count 1, got %v", dateFilteredData["count"])
 	}
 
+	noteFiltered := executeEntryCmdJSON(t, db, []string{
+		"list",
+		"--note-contains", "COF",
+	})
+	noteFilteredData := mustMap(t, noteFiltered["data"])
+	if int(noteFilteredData["count"].(float64)) != 1 {
+		t.Fatalf("expected note filter count 1, got %v", noteFilteredData["count"])
+	}
+	noteEntries := mustAnySlice(t, noteFilteredData["entries"])
+	noteEntry := mustMap(t, noteEntries[0])
+	if noteEntry["note"].(string) != "coffee" {
+		t.Fatalf("expected note-filtered entry note coffee, got %v", noteEntry["note"])
+	}
+
 	deletePayload := executeEntryCmdJSON(t, db, []string{"delete", strconv.FormatInt(firstEntryID, 10)})
 	if ok, _ := deletePayload["ok"].(bool); !ok {
 		t.Fatalf("expected delete ok=true payload=%v", deletePayload)

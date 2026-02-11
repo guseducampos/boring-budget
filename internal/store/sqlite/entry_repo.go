@@ -269,10 +269,11 @@ func (r *EntryRepo) List(ctx context.Context, filter domain.EntryListFilter) ([]
 	}
 
 	params := queries.ListActiveEntriesParams{
-		EntryType:   nullableString(filter.Type),
-		CategoryID:  nullableInt64(filter.CategoryID),
-		DateFromUtc: nullableString(filter.DateFromUTC),
-		DateToUtc:   nullableString(filter.DateToUTC),
+		EntryType:    nullableString(filter.Type),
+		CategoryID:   nullableInt64(filter.CategoryID),
+		DateFromUtc:  nullableString(filter.DateFromUTC),
+		DateToUtc:    nullableString(filter.DateToUTC),
+		NoteContains: nullableString(filter.NoteContains),
 	}
 	rows, err := r.queries.ListActiveEntries(ctx, params)
 	if err != nil {
@@ -280,10 +281,11 @@ func (r *EntryRepo) List(ctx context.Context, filter domain.EntryListFilter) ([]
 	}
 
 	labelRows, err := r.queries.ListActiveEntryLabelIDsForListFilter(ctx, queries.ListActiveEntryLabelIDsForListFilterParams{
-		EntryType:   params.EntryType,
-		CategoryID:  params.CategoryID,
-		DateFromUtc: params.DateFromUtc,
-		DateToUtc:   params.DateToUtc,
+		EntryType:    params.EntryType,
+		CategoryID:   params.CategoryID,
+		DateFromUtc:  params.DateFromUtc,
+		DateToUtc:    params.DateToUtc,
+		NoteContains: params.NoteContains,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list entry labels: %w", err)

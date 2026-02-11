@@ -117,14 +117,16 @@ WHERE deleted_at_utc IS NULL
   AND (?2 IS NULL OR category_id = ?2)
   AND (?3 IS NULL OR transaction_date_utc >= ?3)
   AND (?4 IS NULL OR transaction_date_utc <= ?4)
+  AND (?5 IS NULL OR (note IS NOT NULL AND instr(lower(note), lower(?5)) > 0))
 ORDER BY transaction_date_utc, id
 `
 
 type ListActiveEntriesParams struct {
-	EntryType   interface{} `json:"entry_type"`
-	CategoryID  interface{} `json:"category_id"`
-	DateFromUtc interface{} `json:"date_from_utc"`
-	DateToUtc   interface{} `json:"date_to_utc"`
+	EntryType    interface{} `json:"entry_type"`
+	CategoryID   interface{} `json:"category_id"`
+	DateFromUtc  interface{} `json:"date_from_utc"`
+	DateToUtc    interface{} `json:"date_to_utc"`
+	NoteContains interface{} `json:"note_contains"`
 }
 
 func (q *Queries) ListActiveEntries(ctx context.Context, arg ListActiveEntriesParams) ([]Transaction, error) {
@@ -133,6 +135,7 @@ func (q *Queries) ListActiveEntries(ctx context.Context, arg ListActiveEntriesPa
 		arg.CategoryID,
 		arg.DateFromUtc,
 		arg.DateToUtc,
+		arg.NoteContains,
 	)
 	if err != nil {
 		return nil, err
@@ -211,14 +214,16 @@ WHERE tl.deleted_at_utc IS NULL
   AND (?2 IS NULL OR t.category_id = ?2)
   AND (?3 IS NULL OR t.transaction_date_utc >= ?3)
   AND (?4 IS NULL OR t.transaction_date_utc <= ?4)
+  AND (?5 IS NULL OR (t.note IS NOT NULL AND instr(lower(t.note), lower(?5)) > 0))
 ORDER BY tl.transaction_id, tl.label_id
 `
 
 type ListActiveEntryLabelIDsForListFilterParams struct {
-	EntryType   interface{} `json:"entry_type"`
-	CategoryID  interface{} `json:"category_id"`
-	DateFromUtc interface{} `json:"date_from_utc"`
-	DateToUtc   interface{} `json:"date_to_utc"`
+	EntryType    interface{} `json:"entry_type"`
+	CategoryID   interface{} `json:"category_id"`
+	DateFromUtc  interface{} `json:"date_from_utc"`
+	DateToUtc    interface{} `json:"date_to_utc"`
+	NoteContains interface{} `json:"note_contains"`
 }
 
 type ListActiveEntryLabelIDsForListFilterRow struct {
@@ -232,6 +237,7 @@ func (q *Queries) ListActiveEntryLabelIDsForListFilter(ctx context.Context, arg 
 		arg.CategoryID,
 		arg.DateFromUtc,
 		arg.DateToUtc,
+		arg.NoteContains,
 	)
 	if err != nil {
 		return nil, err

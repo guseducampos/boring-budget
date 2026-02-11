@@ -34,6 +34,7 @@ type entryListFlags struct {
 	categoryIDRaw string
 	fromRaw       string
 	toRaw         string
+	noteContains  string
 	labelIDRaw    []string
 	labelMode     string
 }
@@ -228,6 +229,7 @@ func newEntryListCmd(opts *RootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&flags.categoryIDRaw, "category-id", "", "Filter by category ID")
 	cmd.Flags().StringVar(&flags.fromRaw, "from", "", "Filter start date (RFC3339 or YYYY-MM-DD)")
 	cmd.Flags().StringVar(&flags.toRaw, "to", "", "Filter end date (RFC3339 or YYYY-MM-DD)")
+	cmd.Flags().StringVar(&flags.noteContains, "note-contains", "", "Filter entries whose note contains this text (case-insensitive)")
 	cmd.Flags().StringArrayVar(&flags.labelIDRaw, "label-id", nil, "Filter by label ID (repeatable)")
 	cmd.Flags().StringVar(&flags.labelMode, "label-mode", "any", "Label filter mode: any|all|none")
 
@@ -501,12 +503,13 @@ func buildEntryListFilter(flags *entryListFlags) (domain.EntryListFilter, error)
 	}
 
 	return domain.EntryListFilter{
-		Type:        flags.entryType,
-		CategoryID:  categoryID,
-		DateFromUTC: fromUTC,
-		DateToUTC:   toUTC,
-		LabelIDs:    labelIDs,
-		LabelMode:   flags.labelMode,
+		Type:         flags.entryType,
+		CategoryID:   categoryID,
+		DateFromUTC:  fromUTC,
+		DateToUTC:    toUTC,
+		NoteContains: strings.TrimSpace(flags.noteContains),
+		LabelIDs:     labelIDs,
+		LabelMode:    flags.labelMode,
 	}, nil
 }
 

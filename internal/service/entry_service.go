@@ -180,6 +180,7 @@ func (s *EntryService) List(ctx context.Context, filter domain.EntryListFilter) 
 	}
 	normalizedFilter.DateFromUTC = dateFromUTC
 	normalizedFilter.DateToUTC = dateToUTC
+	normalizedFilter.NoteContains = strings.TrimSpace(filter.NoteContains)
 
 	normalizedLabelIDs, err := domain.NormalizeLabelIDs(filter.LabelIDs)
 	if err != nil {

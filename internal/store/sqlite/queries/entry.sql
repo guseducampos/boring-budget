@@ -21,6 +21,7 @@ WHERE deleted_at_utc IS NULL
   AND (sqlc.narg(category_id) IS NULL OR category_id = sqlc.narg(category_id))
   AND (sqlc.narg(date_from_utc) IS NULL OR transaction_date_utc >= sqlc.narg(date_from_utc))
   AND (sqlc.narg(date_to_utc) IS NULL OR transaction_date_utc <= sqlc.narg(date_to_utc))
+  AND (sqlc.narg(note_contains) IS NULL OR (note IS NOT NULL AND instr(lower(note), lower(sqlc.narg(note_contains))) > 0))
 ORDER BY transaction_date_utc, id;
 
 -- name: SoftDeleteEntry :execresult
@@ -80,6 +81,7 @@ WHERE tl.deleted_at_utc IS NULL
   AND (sqlc.narg(category_id) IS NULL OR t.category_id = sqlc.narg(category_id))
   AND (sqlc.narg(date_from_utc) IS NULL OR t.transaction_date_utc >= sqlc.narg(date_from_utc))
   AND (sqlc.narg(date_to_utc) IS NULL OR t.transaction_date_utc <= sqlc.narg(date_to_utc))
+  AND (sqlc.narg(note_contains) IS NULL OR (t.note IS NOT NULL AND instr(lower(t.note), lower(sqlc.narg(note_contains))) > 0))
 ORDER BY tl.transaction_id, tl.label_id;
 
 -- name: SoftDeleteEntryLabelLinks :execresult

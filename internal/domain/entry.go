@@ -66,12 +66,13 @@ type EntryUpdateInput struct {
 }
 
 type EntryListFilter struct {
-	Type        string
-	CategoryID  *int64
-	DateFromUTC string
-	DateToUTC   string
-	LabelIDs    []int64
-	LabelMode   string
+	Type         string
+	CategoryID   *int64
+	DateFromUTC  string
+	DateToUTC    string
+	NoteContains string
+	LabelIDs     []int64
+	LabelMode    string
 }
 
 type EntryDeleteResult struct {

@@ -136,12 +136,13 @@ func TestEntryServiceListNormalizesAndAppliesAnyLabelMode(t *testing.T) {
 	}
 
 	entries, err := svc.List(context.Background(), domain.EntryListFilter{
-		Type:        " expense ",
-		CategoryID:  &categoryID,
-		DateFromUTC: "2026-02-01",
-		DateToUTC:   "2026-02-28",
-		LabelIDs:    []int64{3, 1, 3},
-		LabelMode:   "any",
+		Type:         " expense ",
+		CategoryID:   &categoryID,
+		DateFromUTC:  "2026-02-01",
+		DateToUTC:    "2026-02-28",
+		NoteContains: "  LUNCH ",
+		LabelIDs:     []int64{3, 1, 3},
+		LabelMode:    "any",
 	})
 	if err != nil {
 		t.Fatalf("list entries: %v", err)
@@ -155,6 +156,9 @@ func TestEntryServiceListNormalizesAndAppliesAnyLabelMode(t *testing.T) {
 	}
 	if capturedFilter.DateToUTC != "2026-02-28T00:00:00Z" {
 		t.Fatalf("expected normalized date_to, got %q", capturedFilter.DateToUTC)
+	}
+	if capturedFilter.NoteContains != "LUNCH" {
+		t.Fatalf("expected trimmed note_contains, got %q", capturedFilter.NoteContains)
 	}
 	if capturedFilter.LabelMode != domain.LabelFilterModeAny {
 		t.Fatalf("expected normalized label mode ANY, got %q", capturedFilter.LabelMode)
