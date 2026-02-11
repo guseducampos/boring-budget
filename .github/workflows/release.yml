@@ -27,6 +27,14 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: Validate release ref
+        run: |
+          if [[ "${GITHUB_REF}" != refs/tags/v* ]]; then
+            echo "Release must run from a v* tag ref. Current ref: ${GITHUB_REF}" >&2
+            exit 1
+          fi
+          echo "Releasing from tag ref: ${GITHUB_REF}" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:

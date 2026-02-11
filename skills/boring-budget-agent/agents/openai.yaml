@@ -1,0 +1,4 @@
+interface:
+  display_name: "Boring Budget"
+  short_description: "Deterministic boring-budget CLI assistant"
+  default_prompt: "Use $boring-budget-agent to run reliable boring-budget workflows with JSON contracts, stable error handling, and non-destructive semantics."

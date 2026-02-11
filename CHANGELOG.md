@@ -8,6 +8,10 @@ The format follows a lightweight Keep a Changelog style.
 
 ### Added
 
+- OpenClaw/Codex skill package for agent workflows:
+  - `skills/boring-budget-agent/SKILL.md`
+  - `skills/boring-budget-agent/references/workflows.md`
+  - `skills/boring-budget-agent/agents/openai.yaml`
 - Product and architecture documentation:
   - `docs/PRODUCT_PLAN.md`
   - `docs/TECHNICAL_BLUEPRINT.md`
@@ -175,6 +179,11 @@ The format follows a lightweight Keep a Changelog style.
 
 ### Changed
 
+- Release workflow now validates manual runs to require a `v*` tag ref before publishing.
+- `skills/boring-budget-agent` now supports binary-only runtime explicitly, including:
+  - install/bootstrap flow when `boring-budget` is missing
+  - guidance that does not depend on repository docs
+  - fallback error/exit handling from runtime JSON + exit code mapping
 - Project renamed from `budgetto` to `boring-budget` across module path, CLI command, docs, and local config defaults.
 
 - `AGENTS.md` now enforces atomic commit policy.

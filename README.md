@@ -284,6 +284,7 @@ go test ./...
 - Build artifacts are uploaded per target with SHA256 checksum files.
 - Release workflow: `.github/workflows/release.yml`
   - Triggered on `v*` tags
+  - Manual runs are validated to require a `v*` tag ref
   - Publishes GitHub release assets using GoReleaser
   - Updates Homebrew formula in `guseducampos/homebrew-tap` (requires `HOMEBREW_TAP_GITHUB_TOKEN` secret)
 
