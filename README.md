@@ -4,6 +4,8 @@
 [![Version](https://img.shields.io/github/v/release/guseducampos/boring-budget?display_name=tag)](https://github.com/guseducampos/boring-budget/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
+![boring-budget hero](docs/assets/boring-budget-hero.webp)
+
 `boring-budget` is a local-first budgeting CLI built with Go + SQLite.
 
 It is intentionally simple:
