@@ -58,6 +58,12 @@ go run ./cmd/budgetto label list
 go run ./cmd/budgetto label rename 1 "Fixed"
 go run ./cmd/budgetto label delete 1
 ```
+- Entries:
+```bash
+go run ./cmd/budgetto entry add --type expense --amount-minor 1200 --currency USD --date 2026-02-11 --category-id 1 --label-id 2 --note "Lunch"
+go run ./cmd/budgetto entry list --type expense --from 2026-02-01 --to 2026-02-28 --label-id 2 --label-mode any
+go run ./cmd/budgetto entry delete 1
+```
 
 ## Current Status
 
@@ -68,3 +74,4 @@ Implemented milestones:
 4. Initial agent contract docs (JSON envelope examples, exit codes, error catalog)
 5. Category CRUD (`add|list|rename|delete`) with non-destructive delete semantics
 6. Label CRUD (`add|list|rename|delete`) with non-destructive link detachment on delete
+7. Entry CRUD (`add|list|delete`) with optional category/labels and combined list filters

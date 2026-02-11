@@ -49,6 +49,16 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/store/sqlite/queries/category.sql`
   - `internal/store/sqlite/queries/label.sql`
   - `internal/store/sqlite/sqlc/*` (generated code)
+- Entry CRUD implementation:
+  - `internal/domain/entry.go`
+  - `internal/service/entry_service.go`
+  - `internal/store/sqlite/entry_repo.go`
+  - `internal/cli/entry.go`
+- SQLC entry query layer:
+  - `internal/store/sqlite/queries/entry.sql`
+  - `internal/store/sqlite/sqlc/entry.sql.go`
+- Migration:
+  - `migrations/0002_transaction_labels_transaction_active_index.sql`
 - Phase 2 tests:
   - `internal/service/category_service_test.go`
   - `internal/store/sqlite/category_repo_test.go`
@@ -67,6 +77,7 @@ The format follows a lightweight Keep a Changelog style.
 - Migration file `migrations/0001_initial.sql` converted to Goose `Up/Down` format.
 - Root CLI now registers `category` and `label` command groups.
 - Category/label repositories migrated from embedded raw CRUD SQL strings to SQLC-generated queries.
+- Root CLI now registers the `entry` command group.
 
 ### Verified
 
@@ -74,6 +85,7 @@ The format follows a lightweight Keep a Changelog style.
 - CLI runs in both human and JSON modes.
 - SQLite DB initialization applies WAL mode and base migrations on startup.
 - End-to-end command checks pass for `category` and `label` lifecycle operations in JSON mode.
+- End-to-end command checks pass for `entry add|list|delete` lifecycle operations in JSON mode.
 
 ## Progress Notes
 
@@ -89,3 +101,10 @@ The format follows a lightweight Keep a Changelog style.
     - deleting category orphans active transactions
     - deleting label soft-deletes label links
   - Service and repository test coverage added for both domains
+
+- Milestone completed: **Phase 3 Core CRUD (Entry)**
+  - Entry command group integrated in CLI (`add|list|delete`)
+  - Optional category/label assignment on add
+  - Combined list filters: type, category, date range, labels (`any|all|none`)
+  - Non-destructive delete with link detachment
+  - Service and repository test coverage added for entry domain
