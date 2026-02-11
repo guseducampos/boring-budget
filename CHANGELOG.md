@@ -82,6 +82,10 @@ The format follows a lightweight Keep a Changelog style.
 - Data portability implementation:
   - `internal/service/portability_service.go`
   - `internal/cli/data.go`
+- Reporting architecture extraction:
+  - `internal/reporting/aggregate.go`
+- Auditability enforcement:
+  - `migrations/0003_audit_triggers.sql`
 - Reporting and balance tests:
   - `internal/domain/report_test.go`
   - `internal/service/report_service_test.go`
@@ -93,6 +97,8 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/store/sqlite/fx_repo_test.go`
 - Settings tests:
   - `internal/store/sqlite/settings_repo_test.go`
+- Audit trigger tests:
+  - `internal/store/sqlite/audit_triggers_test.go`
 - SQLC entry query layer:
   - `internal/store/sqlite/queries/entry.sql`
   - `internal/store/sqlite/sqlc/entry.sql.go`
@@ -128,6 +134,8 @@ The format follows a lightweight Keep a Changelog style.
 - `report` and `balance` now support `--convert-to` with persisted FX rate snapshots.
 - SQLC config now includes `settings` query sources (`sqlc.yaml`).
 - Root CLI now registers `setup` and `data` command groups.
+- Report aggregation logic moved under `internal/reporting` to match architecture layout rules.
+- DB-level triggers now write key create/update/delete events into `audit_events` for categories/labels/entries/caps/settings.
 
 ### Verified
 
@@ -142,6 +150,7 @@ The format follows a lightweight Keep a Changelog style.
 - End-to-end command checks pass for `balance show` (`lifetime|range|both` scopes).
 - `go test ./...` covers FX conversion logic and FX snapshot repository behavior.
 - End-to-end command checks pass for `setup init|show` and `data export|import|backup|restore`.
+- Migration and integration checks pass for audit trigger writes to `audit_events`.
 
 ## Progress Notes
 
@@ -188,3 +197,5 @@ The format follows a lightweight Keep a Changelog style.
   - Setup onboarding flow added (`setup init|show`) with default currency/timezone + optional opening balance/month cap
   - Data portability commands added (`data export|import|backup|restore`) for CSV/JSON + full SQLite backup lifecycle
   - Contract examples extended for setup/data command responses
+  - Architecture compliance improved with dedicated `internal/reporting` package
+  - Auditability strengthened with DB-triggered `audit_events` writes for key mutations
