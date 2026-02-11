@@ -90,6 +90,25 @@ DROP TABLE IF EXISTS other_items;
 	assertGooseVersion(t, ctx, db, 2)
 }
 
+func TestRunMigrationsUsesEmbeddedWhenDefaultDirMissing(t *testing.T) {
+	ctx := context.Background()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "embedded.db")
+
+	db, err := Open(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	if err := RunMigrations(ctx, db, DefaultMigrationsDir); err != nil {
+		t.Fatalf("run migrations with embedded fallback: %v", err)
+	}
+
+	assertTableExists(t, ctx, db, "transactions")
+	assertGooseVersion(t, ctx, db, 3)
+}
+
 func assertGooseVersion(t *testing.T, ctx context.Context, db *sql.DB, expected int64) {
 	t.Helper()
 

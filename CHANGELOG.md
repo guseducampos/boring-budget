@@ -179,6 +179,7 @@ The format follows a lightweight Keep a Changelog style.
 
 ### Changed
 
+- SQLite migration bootstrap now falls back to embedded Goose SQL migrations when the default `migrations` directory is not available on disk (for example in Homebrew-installed binary-only environments), while still honoring explicit `--migrations-dir` overrides.
 - Release workflow now validates manual runs to require a `v*` tag ref before publishing.
 - `skills/boring-budget-agent` now supports binary-only runtime explicitly, including:
   - install/bootstrap flow when `boring-budget` is missing
