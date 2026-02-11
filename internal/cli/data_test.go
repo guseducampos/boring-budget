@@ -445,6 +445,108 @@ func TestDataCommandJSONBackupRestore(t *testing.T) {
 	if count := activeTransactionCountByNote(t, opts.db, "after-backup"); count != 0 {
 		t.Fatalf("expected after-backup entry to be removed by restore, got %d", count)
 	}
+
+	for _, path := range []string{
+		dbPath + ".restore.tmp",
+		dbPath + ".restore.rollback",
+		dbPath + ".restore.rollback-wal",
+		dbPath + ".restore.rollback-shm",
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected restore artifact %q to be cleaned up; stat err=%v", path, err)
+		}
+	}
+}
+
+func TestDataCommandJSONRestoreFailureRollsBackDatabase(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "budgetto.db")
+	migrationsDir := cliMigrationsPath(t)
+
+	db, err := sqlitestore.OpenAndMigrate(context.Background(), dbPath, migrationsDir)
+	if err != nil {
+		t.Fatalf("open and migrate db for restore rollback: %v", err)
+	}
+
+	opts := &RootOptions{
+		Output:        output.FormatJSON,
+		DBPath:        dbPath,
+		MigrationsDir: migrationsDir,
+		db:            db,
+	}
+	t.Cleanup(func() {
+		if opts.db != nil {
+			_ = opts.db.Close()
+		}
+	})
+
+	mustEntrySuccess(t, executeEntryCmdJSON(t, opts.db, []string{
+		"add",
+		"--type", "income",
+		"--amount-minor", "1000",
+		"--currency", "USD",
+		"--date", "2026-02-01",
+		"--note", "pre-rollback-check",
+	}))
+	mustEntrySuccess(t, executeEntryCmdJSON(t, opts.db, []string{
+		"add",
+		"--type", "expense",
+		"--amount-minor", "250",
+		"--currency", "USD",
+		"--date", "2026-02-02",
+		"--note", "still-present-after-failure",
+	}))
+	if count := activeTransactionCount(t, opts.db); count != 2 {
+		t.Fatalf("expected two transactions before failed restore, got %d", count)
+	}
+
+	invalidBackupPath := filepath.Join(tempDir, "snapshots", "invalid.sqlite")
+	if err := os.MkdirAll(filepath.Dir(invalidBackupPath), 0o755); err != nil {
+		t.Fatalf("mkdir invalid backup dir: %v", err)
+	}
+	if err := os.WriteFile(invalidBackupPath, []byte("this-is-not-a-valid-sqlite-backup"), 0o644); err != nil {
+		t.Fatalf("write invalid backup file: %v", err)
+	}
+
+	restorePayload := executeDataCmdJSONWithOptions(t, opts, []string{
+		"restore",
+		"--file", invalidBackupPath,
+	})
+
+	if ok, _ := restorePayload["ok"].(bool); ok {
+		t.Fatalf("expected ok=false for invalid restore payload=%v", restorePayload)
+	}
+
+	errorMap := mustMap(t, restorePayload["error"])
+	if code, _ := errorMap["code"].(string); strings.TrimSpace(code) == "" {
+		t.Fatalf("expected non-empty error code in restore failure payload=%v", restorePayload)
+	}
+
+	if opts.db == nil {
+		t.Fatalf("expected rollback to reopen original database handle")
+	}
+	if count := activeTransactionCount(t, opts.db); count != 2 {
+		t.Fatalf("expected rollback to preserve two transactions, got %d", count)
+	}
+	if count := activeTransactionCountByNote(t, opts.db, "pre-rollback-check"); count != 1 {
+		t.Fatalf("expected pre-rollback-check entry after failed restore, got %d", count)
+	}
+	if count := activeTransactionCountByNote(t, opts.db, "still-present-after-failure"); count != 1 {
+		t.Fatalf("expected still-present-after-failure entry after failed restore, got %d", count)
+	}
+
+	for _, path := range []string{
+		dbPath + ".restore.tmp",
+		dbPath + ".restore.rollback",
+		dbPath + ".restore.rollback-wal",
+		dbPath + ".restore.rollback-shm",
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected restore artifact %q to be cleaned up after rollback; stat err=%v", path, err)
+		}
+	}
 }
 
 func TestDataCommandJSONExportReport(t *testing.T) {

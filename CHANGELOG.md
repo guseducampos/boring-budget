@@ -188,6 +188,7 @@ The format follows a lightweight Keep a Changelog style.
 - `data import` parsing now streams JSON/CSV records incrementally instead of loading full files in memory.
 - `entry list` now loads label links with one batched filtered query instead of per-entry label lookups (removes N+1 query pattern).
 - Report category label resolution now prefers ID-targeted category loading (`ListByIDs`) to avoid full category-table scans.
+- `data restore` now uses command context, validates post-restore DB integrity, and rolls back to a pre-restore snapshot when validation fails.
 - `docs/contracts/*.json` examples are now normalized to the same canonical payloads asserted by CLI golden tests.
 - `docs/contracts/README.md` now documents canonical JSON comparison and `<timestamp_utc>` placeholders for volatile fields.
 
@@ -214,6 +215,7 @@ The format follows a lightweight Keep a Changelog style.
 - `go test ./...` covers large streaming JSON/CSV imports and verifies atomic rollback on malformed mid-stream CSV rows.
 - `go test ./...` covers deterministic batched label loading for `entry list` and filtered label-link query ordering.
 - `go test ./...` covers report category label resolution via `ListByIDs` and deterministic category-id normalization/filtering.
+- `go test ./...` covers restore rollback on invalid backup content and cleanup of restore temp/snapshot artifacts.
 
 ## Progress Notes
 

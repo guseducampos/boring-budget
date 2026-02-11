@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"os"
@@ -265,7 +266,7 @@ func newDataRestoreCmd(opts *RootOptions) *cobra.Command {
 				return printReportError(cmd, reportOutputFormat(opts), &reportCLIError{Code: "INVALID_ARGUMENT", Message: "file is required", Details: map[string]any{"field": "file"}})
 			}
 
-			if err := restoreDatabase(opts, flags.file); err != nil {
+			if err := restoreDatabase(cmd.Context(), opts, flags.file); err != nil {
 				return printReportError(cmd, reportOutputFormat(opts), err)
 			}
 
@@ -446,16 +447,38 @@ func invalidArgsError(command string, args []string) error {
 	}
 }
 
-func restoreDatabase(opts *RootOptions, backupPath string) error {
+func restoreDatabase(ctx context.Context, opts *RootOptions, backupPath string) error {
+	if ctx == nil {
+		return fmt.Errorf("restore db: context is required")
+	}
 	if opts == nil {
 		return fmt.Errorf("restore db: root options are required")
 	}
 
-	sourceFile, err := os.Open(backupPath)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("restore db: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(opts.DBPath), 0o755); err != nil {
 		return err
 	}
-	defer sourceFile.Close()
+
+	tempPath := opts.DBPath + ".restore.tmp"
+	rollbackPath := opts.DBPath + ".restore.rollback"
+	if err := removeFilesIfExist(tempPath, rollbackPath, rollbackPath+"-wal", rollbackPath+"-shm"); err != nil {
+		return err
+	}
+	defer func() {
+		_ = removeFilesIfExist(tempPath)
+	}()
+
+	if err := copyFile(tempPath, backupPath); err != nil {
+		return err
+	}
+
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("restore db: %w", err)
+	}
 
 	if opts.db != nil {
 		if err := opts.db.Close(); err != nil {
@@ -464,12 +487,167 @@ func restoreDatabase(opts *RootOptions, backupPath string) error {
 		opts.db = nil
 	}
 
-	if err := os.MkdirAll(filepath.Dir(opts.DBPath), 0o755); err != nil {
+	rollbackAvailable, err := createRollbackSnapshot(opts.DBPath, rollbackPath)
+	if err != nil {
 		return err
 	}
 
-	tempPath := opts.DBPath + ".restore.tmp"
-	destinationFile, err := os.Create(tempPath)
+	if err := os.Rename(tempPath, opts.DBPath); err != nil {
+		return err
+	}
+	_ = os.Remove(opts.DBPath + "-wal")
+	_ = os.Remove(opts.DBPath + "-shm")
+
+	db, err := openAndValidateSQLite(ctx, opts.DBPath, opts.MigrationsDir)
+	if err != nil {
+		rollbackErr := rollbackRestoreFromSnapshot(opts.DBPath, rollbackPath, rollbackAvailable)
+		if rollbackErr != nil {
+			return fmt.Errorf("restore db validation: %v; rollback failed: %w", err, rollbackErr)
+		}
+
+		if rollbackAvailable {
+			rollbackDB, reopenErr := openAndValidateSQLite(ctx, opts.DBPath, opts.MigrationsDir)
+			if reopenErr != nil {
+				return fmt.Errorf("restore db validation: %v; rollback reopen failed: %w", err, reopenErr)
+			}
+			opts.db = rollbackDB
+		}
+		if cleanupErr := removeFilesIfExist(rollbackPath, rollbackPath+"-wal", rollbackPath+"-shm"); cleanupErr != nil {
+			return fmt.Errorf("restore db validation: %v; rollback cleanup failed: %w", err, cleanupErr)
+		}
+
+		return fmt.Errorf("restore db validation: %w", err)
+	}
+	opts.db = db
+
+	if err := removeFilesIfExist(rollbackPath, rollbackPath+"-wal", rollbackPath+"-shm"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func openAndValidateSQLite(ctx context.Context, dbPath, migrationsDir string) (*sql.DB, error) {
+	db, err := sqlitestore.OpenAndMigrate(ctx, dbPath, migrationsDir)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validateSQLiteIntegrity(ctx, db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+
+	return db, nil
+}
+
+func validateSQLiteIntegrity(ctx context.Context, db *sql.DB) error {
+	if db == nil {
+		return fmt.Errorf("sqlite integrity check: db is nil")
+	}
+
+	row, err := db.QueryContext(ctx, "PRAGMA integrity_check;")
+	if err != nil {
+		return fmt.Errorf("sqlite integrity check query: %w", err)
+	}
+	defer row.Close()
+
+	var hasRows bool
+	for row.Next() {
+		var result string
+		if err := row.Scan(&result); err != nil {
+			return fmt.Errorf("sqlite integrity check scan: %w", err)
+		}
+		hasRows = true
+		if !strings.EqualFold(strings.TrimSpace(result), "ok") {
+			return fmt.Errorf("sqlite integrity check failed: %s", result)
+		}
+	}
+	if err := row.Err(); err != nil {
+		return fmt.Errorf("sqlite integrity check rows: %w", err)
+	}
+	if !hasRows {
+		return fmt.Errorf("sqlite integrity check failed: no results")
+	}
+
+	return nil
+}
+
+func createRollbackSnapshot(dbPath, rollbackPath string) (bool, error) {
+	if _, err := os.Stat(dbPath); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	if err := copyFile(rollbackPath, dbPath); err != nil {
+		return false, err
+	}
+	if err := copyFileIfExists(rollbackPath+"-wal", dbPath+"-wal"); err != nil {
+		return false, err
+	}
+	if err := copyFileIfExists(rollbackPath+"-shm", dbPath+"-shm"); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func rollbackRestoreFromSnapshot(dbPath, rollbackPath string, rollbackAvailable bool) error {
+	if err := removeFilesIfExist(dbPath, dbPath+"-wal", dbPath+"-shm"); err != nil {
+		return err
+	}
+	if !rollbackAvailable {
+		return nil
+	}
+
+	if err := copyFile(dbPath, rollbackPath); err != nil {
+		return err
+	}
+	if err := copyFileIfExists(dbPath+"-wal", rollbackPath+"-wal"); err != nil {
+		return err
+	}
+	if err := copyFileIfExists(dbPath+"-shm", rollbackPath+"-shm"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func removeFilesIfExist(paths ...string) error {
+	for _, path := range paths {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+
+		err := os.Remove(path)
+		if err == nil || os.IsNotExist(err) {
+			continue
+		}
+		return err
+	}
+	return nil
+}
+
+func copyFileIfExists(destinationPath, sourcePath string) error {
+	if _, err := os.Stat(sourcePath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	return copyFile(destinationPath, sourcePath)
+}
+
+func copyFile(destinationPath, sourcePath string) error {
+	sourceFile, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destinationFile, err := os.Create(destinationPath)
 	if err != nil {
 		return err
 	}
@@ -481,19 +659,6 @@ func restoreDatabase(opts *RootOptions, backupPath string) error {
 	if err := destinationFile.Close(); err != nil {
 		return err
 	}
-
-	if err := os.Rename(tempPath, opts.DBPath); err != nil {
-		return err
-	}
-
-	_ = os.Remove(opts.DBPath + "-wal")
-	_ = os.Remove(opts.DBPath + "-shm")
-
-	db, err := sqlitestore.OpenAndMigrate(context.Background(), opts.DBPath, opts.MigrationsDir)
-	if err != nil {
-		return err
-	}
-	opts.db = db
 
 	return nil
 }
