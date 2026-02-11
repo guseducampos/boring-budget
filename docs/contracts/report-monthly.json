@@ -1,49 +1,68 @@
 {
-  "ok": true,
   "data": {
-    "period": {
-      "scope": "monthly",
-      "month_key": "2026-02",
-      "from_utc": "2026-02-01T00:00:00Z",
-      "to_utc": "2026-02-28T23:59:59.999999999Z"
-    },
-    "grouping": "month",
+    "cap_changes": [
+      {
+        "changed_at_utc": "<timestamp_utc>",
+        "currency_code": "USD",
+        "id": 1,
+        "month_key": "2026-02",
+        "new_amount_minor": 1500,
+        "old_amount_minor": null
+      }
+    ],
+    "cap_status": [
+      {
+        "cap_amount_minor": 1500,
+        "currency_code": "USD",
+        "is_exceeded": false,
+        "month_key": "2026-02",
+        "overspend_minor": 0,
+        "spend_total_minor": 1200
+      }
+    ],
     "earnings": {
       "by_currency": [
         {
           "currency_code": "USD",
-          "total_minor": 250000
-        }
-      ],
-      "groups": [
-        {
-          "period_key": "2026-02",
-          "currency_code": "USD",
-          "total_minor": 250000
+          "total_minor": 5000
         }
       ],
       "categories": [
         {
-          "category_id": 1,
-          "category_key": "category:1",
-          "category_label": "Food",
+          "category_key": "orphan",
+          "category_label": "Orphan",
           "currency_code": "USD",
-          "total_minor": 250000
+          "total_minor": 5000
+        }
+      ],
+      "groups": [
+        {
+          "currency_code": "USD",
+          "period_key": "2026-02",
+          "total_minor": 5000
         }
       ]
+    },
+    "grouping": "month",
+    "net": {
+      "by_currency": [
+        {
+          "currency_code": "USD",
+          "total_minor": 3800
+        }
+      ]
+    },
+    "period": {
+      "from_utc": "2026-02-01T00:00:00Z",
+      "month_key": "2026-02",
+      "scope": "monthly",
+      "to_utc": "2026-02-28T23:59:59.999999999Z"
     },
     "spending": {
       "by_currency": [
         {
           "currency_code": "USD",
-          "total_minor": 62000
-        }
-      ],
-      "groups": [
-        {
-          "period_key": "2026-02",
-          "currency_code": "USD",
-          "total_minor": 62000
+          "total_minor": 1200
         }
       ],
       "categories": [
@@ -52,43 +71,23 @@
           "category_key": "category:1",
           "category_label": "Food",
           "currency_code": "USD",
-          "total_minor": 62000
+          "total_minor": 1200
         }
-      ]
-    },
-    "net": {
-      "by_currency": [
+      ],
+      "groups": [
         {
           "currency_code": "USD",
-          "total_minor": 188000
+          "period_key": "2026-02",
+          "total_minor": 1200
         }
       ]
-    },
-    "cap_status": [
-      {
-        "month_key": "2026-02",
-        "currency_code": "USD",
-        "cap_amount_minor": 50000,
-        "spend_total_minor": 62000,
-        "overspend_minor": 12000,
-        "is_exceeded": true
-      }
-    ],
-    "cap_changes": [
-      {
-        "id": 1,
-        "month_key": "2026-02",
-        "old_amount_minor": null,
-        "new_amount_minor": 50000,
-        "currency_code": "USD",
-        "changed_at_utc": "2026-02-10T14:35:00Z"
-      }
-    ]
+    }
   },
-  "warnings": [],
   "error": null,
   "meta": {
     "api_version": "v1",
-    "timestamp_utc": "2026-02-10T14:36:00Z"
-  }
+    "timestamp_utc": "<timestamp_utc>"
+  },
+  "ok": true,
+  "warnings": []
 }

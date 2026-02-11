@@ -124,6 +124,16 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/cli/json_contracts_golden_test.go`
   - `internal/cli/testdata/json_contracts/*`
 - Golden JSON contract coverage now includes `data export --resource report` with deterministic normalization for volatile timestamps and temp file paths.
+- Docs contract determinism guard:
+  - `internal/cli/json_contracts_docs_sync_test.go`
+  - `internal/cli/testdata/json_contracts/entry_update.golden.json`
+  - `internal/cli/testdata/json_contracts/setup_init.golden.json`
+  - sync coverage for `docs/contracts` examples:
+    - `entry add|update`
+    - `cap set`
+    - `report monthly`
+    - `data export --resource entries|report`
+    - `setup init`
 - Portability atomic-import tests:
   - `internal/service/portability_service_test.go`
 - Data portability report export contract:
@@ -174,6 +184,8 @@ The format follows a lightweight Keep a Changelog style.
 - Report category totals now resolve and emit real category names in report outputs/exports (removing `Category <id>` placeholders).
 - `data export` now supports `--resource report` with report-specific flags and file exports in `json|csv`, while preserving entry export behavior.
 - Portability import transaction binding now uses explicit typed interfaces (`EntryRepositoryTxBinder` / `EntryCapLookupTxBinder`) instead of reflection-based `BindTx` lookup.
+- `docs/contracts/*.json` examples are now normalized to the same canonical payloads asserted by CLI golden tests.
+- `docs/contracts/README.md` now documents canonical JSON comparison and `<timestamp_utc>` placeholders for volatile fields.
 
 ### Verified
 

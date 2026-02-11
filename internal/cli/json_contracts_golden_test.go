@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -51,6 +53,43 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		})
 
 		assertJSONContractGolden(t, "cap_set.golden.json", raw)
+	})
+
+	t.Run("entry_update", func(t *testing.T) {
+		db := newCLITestDB(t)
+		t.Cleanup(func() { _ = db.Close() })
+
+		categoryA := insertTestCategory(t, db, "A")
+		categoryB := insertTestCategory(t, db, "B")
+		labelA := insertTestLabel(t, db, "alpha")
+		labelB := insertTestLabel(t, db, "beta")
+
+		addPayload := executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "expense",
+			"--amount-minor", "1200",
+			"--currency", "USD",
+			"--date", "2026-02-01",
+			"--category-id", int64ToString(categoryA),
+			"--label-id", int64ToString(labelA),
+			"--note", "before",
+		})
+		mustEntrySuccess(t, addPayload)
+		addData := mustMap(t, addPayload["data"])
+		entryID := int64(mustMap(t, addData["entry"])["id"].(float64))
+
+		raw := executeEntryCmdRaw(t, db, output.FormatJSON, []string{
+			"update", int64ToString(entryID),
+			"--type", "income",
+			"--amount-minor", "3500",
+			"--currency", "EUR",
+			"--date", "2026-02-05",
+			"--category-id", int64ToString(categoryB),
+			"--label-id", int64ToString(labelB),
+			"--note", "after",
+		})
+
+		assertJSONContractGolden(t, "entry_update.golden.json", raw)
 	})
 
 	t.Run("report_monthly", func(t *testing.T) {
@@ -161,6 +200,23 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 
 		assertJSONContractGolden(t, "data_export_report.golden.json", raw)
 	})
+
+	t.Run("setup_init", func(t *testing.T) {
+		db := newCLITestDB(t)
+		t.Cleanup(func() { _ = db.Close() })
+
+		raw := executeSetupCmdRaw(t, db, output.FormatJSON, []string{
+			"init",
+			"--default-currency", "usd",
+			"--timezone", "UTC",
+			"--opening-balance-minor", "100000",
+			"--opening-balance-date", "2026-02-11",
+			"--month-cap-minor", "50000",
+			"--month-cap-month", "2026-02",
+		})
+
+		assertJSONContractGolden(t, "setup_init.golden.json", raw)
+	})
 }
 
 func assertJSONContractGolden(t *testing.T, fixtureName, rawJSON string) {
@@ -257,4 +313,22 @@ func jsonContractsGoldenDir(t *testing.T) string {
 
 func int64ToString(value int64) string {
 	return strconv.FormatInt(value, 10)
+}
+
+func executeSetupCmdRaw(t *testing.T, db *sql.DB, format string, args []string) string {
+	t.Helper()
+
+	opts := &RootOptions{Output: format, db: db}
+	cmd := NewSetupCmd(opts)
+
+	buf := &bytes.Buffer{}
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs(args)
+
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("execute setup cmd %v: %v", args, err)
+	}
+
+	return strings.TrimSpace(buf.String())
 }

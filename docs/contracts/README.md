@@ -18,15 +18,16 @@ This folder defines deterministic JSON contract examples for agent integrations.
 ```
 
 Rules:
-- Keep top-level key order exactly: `ok`, `data`, `warnings`, `error`, `meta`.
+- Fixtures are canonicalized in tests before comparison; JSON object key order is not semantically relevant.
 - Store and return money in minor units only (`amount_minor`) plus `currency_code`.
 - Use ISO-8601 UTC timestamps (`...Z`).
+- Replace volatile timestamps in examples with `<timestamp_utc>`.
 - Keep arrays deterministically ordered (typically by date, then ID).
 - `error` is `null` on success, object on failure: `{ "code", "message", "details" }`.
 
 ## Files
 
-- `entry-add.json`: `entry add --output json` success contract with overspend warning.
+- `entry-add.json`: `entry add --output json` success contract.
 - `entry-update.json`: `entry update --output json` success contract.
 - `cap-set.json`: `cap set --output json` success contract with cap history change.
 - `report-monthly.json`: `report monthly --output json` success contract.

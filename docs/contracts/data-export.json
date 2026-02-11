@@ -1,15 +1,15 @@
 {
-  "ok": true,
   "data": {
-    "resource": "entries",
-    "exported": 42,
-    "file": "./backup/entries.json",
-    "format": "json"
+    "exported": 1,
+    "file": "entries.json",
+    "format": "json",
+    "resource": "entries"
   },
-  "warnings": [],
   "error": null,
   "meta": {
     "api_version": "v1",
-    "timestamp_utc": "2026-02-11T00:00:00Z"
-  }
+    "timestamp_utc": "<timestamp_utc>"
+  },
+  "ok": true,
+  "warnings": []
 }
