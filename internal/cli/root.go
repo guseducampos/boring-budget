@@ -86,5 +86,10 @@ func NewRootCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&opts.DBPath, "db-path", opts.DBPath, "SQLite database path")
 	cmd.PersistentFlags().StringVar(&opts.MigrationsDir, "migrations-dir", opts.MigrationsDir, "Migrations directory path")
 
+	cmd.AddCommand(
+		NewCategoryCmd(opts),
+		NewLabelCmd(opts),
+	)
+
 	return cmd
 }
