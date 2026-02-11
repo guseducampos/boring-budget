@@ -42,10 +42,29 @@ go run ./cmd/budgetto --output json
 go run ./cmd/budgetto --db-path "$HOME/.budgetto/budgetto.db" --migrations-dir "./migrations"
 ```
 
+## Current Commands
+
+- Categories:
+```bash
+go run ./cmd/budgetto category add "Food"
+go run ./cmd/budgetto category list
+go run ./cmd/budgetto category rename 1 "Groceries"
+go run ./cmd/budgetto category delete 1
+```
+- Labels:
+```bash
+go run ./cmd/budgetto label add "Recurring"
+go run ./cmd/budgetto label list
+go run ./cmd/budgetto label rename 1 "Fixed"
+go run ./cmd/budgetto label delete 1
+```
+
 ## Current Status
 
-Foundation milestone is implemented:
+Implemented milestones:
 1. Go module and Cobra CLI scaffold
 2. SQLite bootstrap with WAL + foreign keys
 3. Migration runner and initial schema
 4. Initial agent contract docs (JSON envelope examples, exit codes, error catalog)
+5. Category CRUD (`add|list|rename|delete`) with non-destructive delete semantics
+6. Label CRUD (`add|list|rename|delete`) with non-destructive link detachment on delete

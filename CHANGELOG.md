@@ -34,6 +34,23 @@ The format follows a lightweight Keep a Changelog style.
 - Initial tests:
   - `internal/cli/output/envelope_test.go`
   - `internal/store/sqlite/migrate_test.go`
+- Category CRUD implementation:
+  - `internal/domain/category.go`
+  - `internal/service/category_service.go`
+  - `internal/store/sqlite/category_repo.go`
+  - `internal/cli/category.go`
+- Label CRUD implementation:
+  - `internal/domain/label.go`
+  - `internal/service/label_service.go`
+  - `internal/store/sqlite/label_repo.go`
+  - `internal/cli/label.go`
+- Phase 2 tests:
+  - `internal/service/category_service_test.go`
+  - `internal/store/sqlite/category_repo_test.go`
+  - `internal/domain/label_test.go`
+  - `internal/service/label_service_test.go`
+  - `internal/store/sqlite/label_repo_test.go`
+  - `internal/cli/label_test.go`
 - Repository hygiene:
   - `.gitignore`
 
@@ -43,12 +60,14 @@ The format follows a lightweight Keep a Changelog style.
 - `README.md` updated with quick-start instructions and contract docs link.
 - Migration engine switched from custom raw SQL runner to Goose (`github.com/pressly/goose/v3`).
 - Migration file `migrations/0001_initial.sql` converted to Goose `Up/Down` format.
+- Root CLI now registers `category` and `label` command groups.
 
 ### Verified
 
 - `go test ./...` passes.
 - CLI runs in both human and JSON modes.
 - SQLite DB initialization applies WAL mode and base migrations on startup.
+- End-to-end command checks pass for `category` and `label` lifecycle operations in JSON mode.
 
 ## Progress Notes
 
@@ -57,3 +76,10 @@ The format follows a lightweight Keep a Changelog style.
   - SQLite setup (WAL + foreign keys + migration runner)
   - Initial schema aligned with product/blueprint decisions
   - Agent contract docs and baseline tests
+
+- Milestone completed: **Phase 2 Core CRUD (Category + Label)**
+  - Category and label command groups integrated in CLI
+  - Non-destructive delete rules implemented:
+    - deleting category orphans active transactions
+    - deleting label soft-deletes label links
+  - Service and repository test coverage added for both domains
