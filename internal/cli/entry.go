@@ -1,0 +1,462 @@
+package cli
+
+import (
+	"errors"
+	"fmt"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"budgetto/internal/cli/output"
+	"budgetto/internal/domain"
+	"budgetto/internal/service"
+	sqlitestore "budgetto/internal/store/sqlite"
+	"github.com/spf13/cobra"
+)
+
+const (
+	defaultEntryCurrency = "USD"
+)
+
+type entryAddFlags struct {
+	entryType     string
+	amountMinor   int64
+	currency      string
+	dateRaw       string
+	categoryIDRaw string
+	labelIDRaw    []string
+	note          string
+}
+
+type entryListFlags struct {
+	entryType     string
+	categoryIDRaw string
+	fromRaw       string
+	toRaw         string
+	labelIDRaw    []string
+	labelMode     string
+}
+
+type entryCLIError struct {
+	Code    string
+	Message string
+	Details any
+}
+
+func (e *entryCLIError) Error() string {
+	if e == nil {
+		return "entry command error"
+	}
+	return e.Message
+}
+
+func NewEntryCmd(opts *RootOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "entry",
+		Short: "Manage entries",
+	}
+
+	cmd.AddCommand(
+		newEntryAddCmd(opts),
+		newEntryListCmd(opts),
+		newEntryDeleteCmd(opts),
+	)
+
+	return cmd
+}
+
+func newEntryAddCmd(opts *RootOptions) *cobra.Command {
+	flags := &entryAddFlags{}
+
+	cmd := &cobra.Command{
+		Use:   "add",
+		Short: "Add a transaction entry",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 0 {
+				return printEntryError(cmd, entryOutputFormat(opts), &entryCLIError{
+					Code:    "INVALID_ARGUMENT",
+					Message: "entry add does not accept positional arguments",
+					Details: map[string]any{"args": args},
+				})
+			}
+
+			svc, err := newEntryService(opts)
+			if err != nil {
+				return printEntryError(cmd, entryOutputFormat(opts), err)
+			}
+
+			input, err := buildEntryAddInput(cmd, flags)
+			if err != nil {
+				return printEntryError(cmd, entryOutputFormat(opts), err)
+			}
+
+			entry, err := svc.Add(cmd.Context(), input)
+			if err != nil {
+				return printEntryError(cmd, entryOutputFormat(opts), err)
+			}
+
+			env := output.NewSuccessEnvelope(map[string]any{"entry": entry}, nil)
+			return output.Print(cmd.OutOrStdout(), entryOutputFormat(opts), env)
+		},
+	}
+
+	cmd.Flags().StringVar(&flags.entryType, "type", "", "Entry type: income|expense")
+	cmd.Flags().Int64Var(&flags.amountMinor, "amount-minor", 0, "Amount in minor units (must be > 0)")
+	cmd.Flags().StringVar(&flags.currency, "currency", defaultEntryCurrency, "ISO currency code (e.g. USD)")
+	cmd.Flags().StringVar(&flags.dateRaw, "date", "", "Transaction date (RFC3339 or YYYY-MM-DD)")
+	cmd.Flags().StringVar(&flags.categoryIDRaw, "category-id", "", "Optional category ID")
+	cmd.Flags().StringArrayVar(&flags.labelIDRaw, "label-id", nil, "Optional label ID (repeatable)")
+	cmd.Flags().StringVar(&flags.note, "note", "", "Optional note")
+
+	return cmd
+}
+
+func newEntryListCmd(opts *RootOptions) *cobra.Command {
+	flags := &entryListFlags{}
+
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List entries",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 0 {
+				return printEntryError(cmd, entryOutputFormat(opts), &entryCLIError{
+					Code:    "INVALID_ARGUMENT",
+					Message: "entry list does not accept positional arguments",
+					Details: map[string]any{"args": args},
+				})
+			}
+
+			svc, err := newEntryService(opts)
+			if err != nil {
+				return printEntryError(cmd, entryOutputFormat(opts), err)
+			}
+
+			filter, err := buildEntryListFilter(flags)
+			if err != nil {
+				return printEntryError(cmd, entryOutputFormat(opts), err)
+			}
+
+			entries, err := svc.List(cmd.Context(), filter)
+			if err != nil {
+				return printEntryError(cmd, entryOutputFormat(opts), err)
+			}
+
+			env := output.NewSuccessEnvelope(map[string]any{
+				"entries": entries,
+				"count":   len(entries),
+			}, nil)
+			return output.Print(cmd.OutOrStdout(), entryOutputFormat(opts), env)
+		},
+	}
+
+	cmd.Flags().StringVar(&flags.entryType, "type", "", "Filter by entry type: income|expense")
+	cmd.Flags().StringVar(&flags.categoryIDRaw, "category-id", "", "Filter by category ID")
+	cmd.Flags().StringVar(&flags.fromRaw, "from", "", "Filter start date (RFC3339 or YYYY-MM-DD)")
+	cmd.Flags().StringVar(&flags.toRaw, "to", "", "Filter end date (RFC3339 or YYYY-MM-DD)")
+	cmd.Flags().StringArrayVar(&flags.labelIDRaw, "label-id", nil, "Filter by label ID (repeatable)")
+	cmd.Flags().StringVar(&flags.labelMode, "label-mode", "any", "Label filter mode: any|all|none")
+
+	return cmd
+}
+
+func newEntryDeleteCmd(opts *RootOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Soft-delete an entry",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return printEntryError(cmd, entryOutputFormat(opts), &entryCLIError{
+					Code:    "INVALID_ARGUMENT",
+					Message: "delete requires exactly one argument: <id>",
+					Details: map[string]any{"required_args": []string{"id"}},
+				})
+			}
+
+			svc, err := newEntryService(opts)
+			if err != nil {
+				return printEntryError(cmd, entryOutputFormat(opts), err)
+			}
+
+			id, err := parsePositiveInt64(args[0], "id")
+			if err != nil {
+				return printEntryError(cmd, entryOutputFormat(opts), err)
+			}
+
+			deleted, err := svc.Delete(cmd.Context(), id)
+			if err != nil {
+				return printEntryError(cmd, entryOutputFormat(opts), err)
+			}
+
+			env := output.NewSuccessEnvelope(map[string]any{"deleted": deleted}, nil)
+			return output.Print(cmd.OutOrStdout(), entryOutputFormat(opts), env)
+		},
+	}
+}
+
+func newEntryService(opts *RootOptions) (*service.EntryService, error) {
+	if opts == nil || opts.db == nil {
+		return nil, &entryCLIError{
+			Code:    "DB_ERROR",
+			Message: "database operation failed",
+			Details: map[string]any{"reason": "database connection unavailable"},
+		}
+	}
+
+	repo := sqlitestore.NewEntryRepo(opts.db)
+	svc, err := service.NewEntryService(repo)
+	if err != nil {
+		return nil, fmt.Errorf("entry service init: %w", err)
+	}
+
+	return svc, nil
+}
+
+func buildEntryAddInput(cmd *cobra.Command, flags *entryAddFlags) (domain.EntryAddInput, error) {
+	if flags == nil {
+		return domain.EntryAddInput{}, &entryCLIError{Code: "INTERNAL_ERROR", Message: "entry add flags unavailable", Details: map[string]any{}}
+	}
+
+	if strings.TrimSpace(flags.entryType) == "" {
+		return domain.EntryAddInput{}, &entryCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "type is required",
+			Details: map[string]any{"field": "type"},
+		}
+	}
+	if strings.TrimSpace(flags.dateRaw) == "" {
+		return domain.EntryAddInput{}, &entryCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "date is required",
+			Details: map[string]any{"field": "date"},
+		}
+	}
+
+	labelIDs, err := parsePositiveInt64List(flags.labelIDRaw, "label-id")
+	if err != nil {
+		return domain.EntryAddInput{}, err
+	}
+
+	var categoryID *int64
+	if cmd != nil && cmd.Flags().Changed("category-id") {
+		id, err := parsePositiveInt64(flags.categoryIDRaw, "category-id")
+		if err != nil {
+			return domain.EntryAddInput{}, err
+		}
+		categoryID = &id
+	}
+
+	return domain.EntryAddInput{
+		Type:               flags.entryType,
+		AmountMinor:        flags.amountMinor,
+		CurrencyCode:       flags.currency,
+		TransactionDateUTC: flags.dateRaw,
+		CategoryID:         categoryID,
+		LabelIDs:           labelIDs,
+		Note:               flags.note,
+	}, nil
+}
+
+func buildEntryListFilter(flags *entryListFlags) (domain.EntryListFilter, error) {
+	if flags == nil {
+		return domain.EntryListFilter{}, &entryCLIError{Code: "INTERNAL_ERROR", Message: "entry list flags unavailable", Details: map[string]any{}}
+	}
+
+	var categoryID *int64
+	if strings.TrimSpace(flags.categoryIDRaw) != "" {
+		id, err := parsePositiveInt64(flags.categoryIDRaw, "category-id")
+		if err != nil {
+			return domain.EntryListFilter{}, err
+		}
+		categoryID = &id
+	}
+
+	labelIDs, err := parsePositiveInt64List(flags.labelIDRaw, "label-id")
+	if err != nil {
+		return domain.EntryListFilter{}, err
+	}
+
+	fromUTC, err := normalizeListDateBound(flags.fromRaw, false)
+	if err != nil {
+		return domain.EntryListFilter{}, &entryCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "from must be RFC3339 or YYYY-MM-DD",
+			Details: map[string]any{"field": "from", "value": flags.fromRaw},
+		}
+	}
+	toUTC, err := normalizeListDateBound(flags.toRaw, true)
+	if err != nil {
+		return domain.EntryListFilter{}, &entryCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "to must be RFC3339 or YYYY-MM-DD",
+			Details: map[string]any{"field": "to", "value": flags.toRaw},
+		}
+	}
+
+	return domain.EntryListFilter{
+		Type:        flags.entryType,
+		CategoryID:  categoryID,
+		DateFromUTC: fromUTC,
+		DateToUTC:   toUTC,
+		LabelIDs:    labelIDs,
+		LabelMode:   flags.labelMode,
+	}, nil
+}
+
+func parsePositiveInt64(raw, field string) (int64, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return 0, &entryCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: fmt.Sprintf("%s is required", field),
+			Details: map[string]any{"field": field},
+		}
+	}
+
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || parsed <= 0 {
+		return 0, &entryCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: fmt.Sprintf("%s must be a positive integer", field),
+			Details: map[string]any{"field": field, "value": raw},
+		}
+	}
+
+	return parsed, nil
+}
+
+func parsePositiveInt64List(rawIDs []string, field string) ([]int64, error) {
+	if len(rawIDs) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[int64]struct{}, len(rawIDs))
+	ids := make([]int64, 0, len(rawIDs))
+	for _, raw := range rawIDs {
+		id, err := parsePositiveInt64(raw, field)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+
+	sort.Slice(ids, func(i, j int) bool {
+		return ids[i] < ids[j]
+	})
+	return ids, nil
+}
+
+func normalizeListDateBound(raw string, endOfDay bool) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", nil
+	}
+
+	if t, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return t.UTC().Format(time.RFC3339Nano), nil
+	}
+	if t, err := time.Parse(time.RFC3339, value); err == nil {
+		return t.UTC().Format(time.RFC3339Nano), nil
+	}
+	if t, err := time.Parse("2006-01-02", value); err == nil {
+		if endOfDay {
+			t = t.Add(24*time.Hour - time.Nanosecond)
+		}
+		return t.UTC().Format(time.RFC3339Nano), nil
+	}
+
+	return "", fmt.Errorf("invalid date")
+}
+
+func entryOutputFormat(opts *RootOptions) string {
+	if opts == nil {
+		return output.FormatHuman
+	}
+	return opts.Output
+}
+
+func printEntryError(cmd *cobra.Command, format string, err error) error {
+	if cmd == nil {
+		return fmt.Errorf("nil command")
+	}
+
+	if err == nil {
+		env := output.NewErrorEnvelope("INTERNAL_ERROR", "unexpected internal failure", map[string]any{}, nil)
+		return output.Print(cmd.OutOrStdout(), format, env)
+	}
+
+	var cliErr *entryCLIError
+	if errors.As(err, &cliErr) {
+		env := output.NewErrorEnvelope(cliErr.Code, cliErr.Message, cliErr.Details, nil)
+		return output.Print(cmd.OutOrStdout(), format, env)
+	}
+
+	env := output.NewErrorEnvelope(codeFromEntryError(err), messageFromEntryError(err), map[string]any{"reason": err.Error()}, nil)
+	return output.Print(cmd.OutOrStdout(), format, env)
+}
+
+func codeFromEntryError(err error) string {
+	switch {
+	case errors.Is(err, domain.ErrInvalidCurrencyCode):
+		return "INVALID_CURRENCY_CODE"
+	case errors.Is(err, domain.ErrInvalidDateRange):
+		return "INVALID_DATE_RANGE"
+	case errors.Is(err, domain.ErrInvalidEntryType),
+		errors.Is(err, domain.ErrInvalidAmountMinor),
+		errors.Is(err, domain.ErrInvalidTransactionDate),
+		errors.Is(err, domain.ErrInvalidEntryID),
+		errors.Is(err, domain.ErrInvalidCategoryID),
+		errors.Is(err, domain.ErrInvalidLabelID),
+		errors.Is(err, domain.ErrInvalidLabelMode):
+		return "INVALID_ARGUMENT"
+	case errors.Is(err, domain.ErrCategoryNotFound),
+		errors.Is(err, domain.ErrLabelNotFound),
+		errors.Is(err, domain.ErrEntryNotFound):
+		return "NOT_FOUND"
+	default:
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "unique constraint") || strings.Contains(msg, "constraint failed") {
+			return "CONFLICT"
+		}
+		return "DB_ERROR"
+	}
+}
+
+func messageFromEntryError(err error) string {
+	switch {
+	case errors.Is(err, domain.ErrInvalidCurrencyCode):
+		return "currency must be a 3-letter ISO code"
+	case errors.Is(err, domain.ErrInvalidDateRange):
+		return "from must be less than or equal to to"
+	case errors.Is(err, domain.ErrInvalidEntryType):
+		return "type must be one of: income|expense"
+	case errors.Is(err, domain.ErrInvalidAmountMinor):
+		return "amount-minor must be greater than zero"
+	case errors.Is(err, domain.ErrInvalidTransactionDate):
+		return "date/from/to must be RFC3339 or YYYY-MM-DD"
+	case errors.Is(err, domain.ErrInvalidEntryID):
+		return "id must be a positive integer"
+	case errors.Is(err, domain.ErrInvalidCategoryID):
+		return "category-id must be a positive integer"
+	case errors.Is(err, domain.ErrInvalidLabelID):
+		return "label-id must be a positive integer"
+	case errors.Is(err, domain.ErrInvalidLabelMode):
+		return "label-mode must be one of: any|all|none"
+	case errors.Is(err, domain.ErrCategoryNotFound):
+		return "category not found"
+	case errors.Is(err, domain.ErrLabelNotFound):
+		return "label not found"
+	case errors.Is(err, domain.ErrEntryNotFound):
+		return "entry not found"
+	default:
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "unique constraint") || strings.Contains(msg, "constraint failed") {
+			return "conflict while processing entry"
+		}
+		return "database operation failed"
+	}
+}
