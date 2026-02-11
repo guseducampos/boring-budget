@@ -1,47 +1,60 @@
 # boring-budget
 
 `boring-budget` is a local-first budgeting CLI built with Go + SQLite.
-your boring budget tracking for you and your agent.
 
-It is designed for two audiences:
-- Humans who want a practical command-line budgeting tool.
-- Agents/LLMs that need deterministic JSON contracts and stable automation behavior.
+It is intentionally simple:
+- Fast CLI workflows for humans
+- Stable JSON contracts for agents
+- Zero cloud lock-in by default
 
-## Why boring-budget
+If you want your money tracking to be reliable, scriptable, and not full of UI noise, this is for you.
 
-- Track both expenses and earnings.
-- Organize transactions with categories and multiple labels.
-- Enforce monthly spending caps with non-blocking overspend warnings.
-- Generate reports across range/monthly/bimonthly/quarterly scopes.
-- Support multi-currency reporting and optional FX-converted summaries.
-- Keep data local by default (`$HOME/.boring-budget/boring-budget.db`).
+## Why Humans Use It
+
+- Expenses and income, in one place
+- Categories and multi-label tagging
+- Monthly cap warnings without blocking your flow
+- Reports that answer real questions quickly
+- Local SQLite database you control (`$HOME/.boring-budget/boring-budget.db`)
+
+## Why Agents Like It
+
+- Deterministic JSON envelopes on core commands
+- Stable error codes and exit behavior
+- Contract-focused docs and regression tests
+- Non-destructive data semantics and auditability
 
 ## Core Principles
 
-- Money is stored in minor units only (`amount_minor`) plus `currency_code`.
-- Timestamps are stored in UTC.
-- Human output can render `*_utc` values in configured timezone.
-- Deletes are non-destructive where possible.
-- Core commands support both `--output human` and `--output json`.
-- JSON shape and ordering are contract-driven and regression tested.
+- Money is stored in minor units only (`amount_minor`) + ISO currency code
+- Timestamps are stored in UTC
+- Human output can render UTC fields in your timezone
+- Deletes are non-destructive where possible
+- Core commands support both `--output human` and `--output json`
 
 ## Feature Summary
 
-- Category CRUD (`add|list|rename|delete`) with orphaning behavior on delete.
-- Label CRUD (`add|list|rename|delete`) with link detachment on delete.
-- Entry CRUD (`add|update|list|delete`) with optional category, labels, and note.
-- Cap management (`set|show|history`) with cap-change history.
-- Overspend policy: allow write + emit warning.
-- Reports (`range|monthly|bimonthly|quarterly`) with group-by (`day|week|month`).
-- Balance views (`lifetime|range|both`).
-- FX conversion via Frankfurter/ECB with persisted rate snapshots.
-- Onboarding setup (`setup init|show`).
-- Portability (`data export|import|backup|restore`) for JSON/CSV + full DB backup.
-- Hardened restore path with integrity validation + rollback snapshot strategy.
+- Category CRUD (`add|list|rename|delete`) with orphaning behavior on delete
+- Label CRUD (`add|list|rename|delete`) with link detachment on delete
+- Entry CRUD (`add|update|list|delete`) with optional category, labels, and note
+- Cap management (`set|show|history`) with cap-change history
+- Overspend policy: allow write + emit warning
+- Reports (`range|monthly|bimonthly|quarterly`) with group-by (`day|week|month`)
+- Balance views (`lifetime|range|both`)
+- FX conversion via Frankfurter/ECB with persisted rate snapshots
+- Onboarding setup (`setup init|show`)
+- Portability (`data export|import|backup|restore`) for JSON/CSV + full DB backup
+- Hardened restore path with integrity validation + rollback snapshot strategy
 
 ## Installation
 
-### Universal binary (recommended)
+### Homebrew (easiest)
+
+```bash
+brew install guseducampos/tap/boring-budget
+```
+
+### Universal binary
 
 - Download the artifact for your platform from CI/release outputs:
   - `darwin/amd64`, `darwin/arm64`
@@ -56,21 +69,6 @@ Then verify:
 
 ```bash
 boring-budget --help
-```
-
-### Homebrew
-
-Once releases are published, install with:
-
-```bash
-brew tap guseducampos/tap
-brew install boring-budget
-```
-
-Or one-liner:
-
-```bash
-brew install guseducampos/tap/boring-budget
 ```
 
 ### Build from source (development)
@@ -89,6 +87,8 @@ go run ./cmd/boring-budget --help
 ```
 
 ## Quick Start
+
+Get useful output in under a minute.
 
 ### 1) Initialize settings
 
