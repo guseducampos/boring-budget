@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -119,11 +120,6 @@ func (s *PortabilityService) Import(ctx context.Context, format, filePath string
 		return PortabilityImportResult{}, fmt.Errorf("unsupported import format: %s", format)
 	}
 
-	records, err := readImportRecords(normalizedFormat, filePath)
-	if err != nil {
-		return PortabilityImportResult{}, err
-	}
-
 	existingSignatures := map[string]struct{}{}
 	if idempotent {
 		existing, err := s.entryService.List(ctx, domain.EntryListFilter{})
@@ -163,7 +159,7 @@ func (s *PortabilityService) Import(ctx context.Context, format, filePath string
 	}
 
 	result := PortabilityImportResult{Warnings: []domain.Warning{}}
-	for _, record := range records {
+	if err := streamImportRecords(normalizedFormat, filePath, func(record portabilityEntryRecord) error {
 		candidate := domain.Entry{
 			Type:               record.Type,
 			AmountMinor:        record.AmountMinor,
@@ -178,7 +174,7 @@ func (s *PortabilityService) Import(ctx context.Context, format, filePath string
 		if idempotent {
 			if _, exists := existingSignatures[signature]; exists {
 				result.Skipped++
-				continue
+				return nil
 			}
 		}
 
@@ -192,12 +188,15 @@ func (s *PortabilityService) Import(ctx context.Context, format, filePath string
 			Note:               record.Note,
 		})
 		if err != nil {
-			return PortabilityImportResult{}, err
+			return err
 		}
 
 		result.Imported++
 		result.Warnings = append(result.Warnings, created.Warnings...)
 		existingSignatures[entrySignature(created.Entry)] = struct{}{}
+		return nil
+	}); err != nil {
+		return PortabilityImportResult{}, err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -571,102 +570,248 @@ func writeReportCSV(filePath string, report domain.Report, warnings []domain.War
 	return writer.Error()
 }
 
-func readImportRecords(format, filePath string) ([]portabilityEntryRecord, error) {
+func streamImportRecords(format, filePath string, consume func(portabilityEntryRecord) error) error {
 	switch format {
 	case PortabilityFormatJSON:
-		return readImportRecordsJSON(filePath)
+		return streamImportRecordsJSON(filePath, consume)
 	case PortabilityFormatCSV:
-		return readImportRecordsCSV(filePath)
+		return streamImportRecordsCSV(filePath, consume)
 	default:
-		return nil, fmt.Errorf("unsupported format")
+		return fmt.Errorf("unsupported format")
 	}
 }
 
-func readImportRecordsJSON(filePath string) ([]portabilityEntryRecord, error) {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
-	}
-
-	payload := portabilityJSONEnvelope{}
-	if err := json.Unmarshal(content, &payload); err == nil && payload.Entries != nil {
-		return payload.Entries, nil
-	}
-
-	records := []portabilityEntryRecord{}
-	if err := json.Unmarshal(content, &records); err != nil {
-		return nil, err
-	}
-	return records, nil
-}
-
-func readImportRecordsCSV(filePath string) ([]portabilityEntryRecord, error) {
+func streamImportRecordsJSON(filePath string, consume func(portabilityEntryRecord) error) error {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, err
+		return err
+	}
+	defer file.Close()
+
+	decoder := json.NewDecoder(file)
+
+	firstToken, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+
+	root, ok := firstToken.(json.Delim)
+	if !ok {
+		return fmt.Errorf("invalid json import payload: expected top-level array or object with entries")
+	}
+
+	switch root {
+	case '[':
+		if err := decodeEntryArray(decoder, consume); err != nil {
+			return err
+		}
+	case '{':
+		foundEntries := false
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+
+			key, ok := keyToken.(string)
+			if !ok {
+				return fmt.Errorf("invalid json import payload: expected object property name")
+			}
+
+			if key == "entries" {
+				entriesToken, err := decoder.Token()
+				if err != nil {
+					return err
+				}
+				entriesDelim, ok := entriesToken.(json.Delim)
+				if !ok || entriesDelim != '[' {
+					return fmt.Errorf("invalid json import payload: entries must be an array")
+				}
+				if err := decodeEntryArray(decoder, consume); err != nil {
+					return err
+				}
+				foundEntries = true
+				continue
+			}
+
+			if err := discardJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+
+		endToken, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		endDelim, ok := endToken.(json.Delim)
+		if !ok || endDelim != '}' {
+			return fmt.Errorf("invalid json import payload: malformed object")
+		}
+		if !foundEntries {
+			return fmt.Errorf("invalid json import payload: expected top-level array or object with entries")
+		}
+	default:
+		return fmt.Errorf("invalid json import payload: expected top-level array or object with entries")
+	}
+
+	if token, err := decoder.Token(); err != io.EOF {
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("invalid json import payload: trailing data found: %v", token)
+	}
+
+	return nil
+}
+
+func decodeEntryArray(decoder *json.Decoder, consume func(portabilityEntryRecord) error) error {
+	for decoder.More() {
+		record := portabilityEntryRecord{}
+		if err := decoder.Decode(&record); err != nil {
+			return err
+		}
+		if err := consume(record); err != nil {
+			return err
+		}
+	}
+
+	endToken, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	endDelim, ok := endToken.(json.Delim)
+	if !ok || endDelim != ']' {
+		return fmt.Errorf("invalid json import payload: malformed array")
+	}
+
+	return nil
+}
+
+func discardJSONValue(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+
+	switch delim {
+	case '{':
+		for decoder.More() {
+			if _, err := decoder.Token(); err != nil {
+				return err
+			}
+			if err := discardJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		endToken, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		endDelim, ok := endToken.(json.Delim)
+		if !ok || endDelim != '}' {
+			return fmt.Errorf("invalid json import payload: malformed object")
+		}
+		return nil
+	case '[':
+		for decoder.More() {
+			if err := discardJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		endToken, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		endDelim, ok := endToken.(json.Delim)
+		if !ok || endDelim != ']' {
+			return fmt.Errorf("invalid json import payload: malformed array")
+		}
+		return nil
+	default:
+		return fmt.Errorf("invalid json import payload: malformed json value")
+	}
+}
+
+func streamImportRecordsCSV(filePath string, consume func(portabilityEntryRecord) error) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
 	}
 	defer file.Close()
 
 	reader := csv.NewReader(file)
-	rows, err := reader.ReadAll()
-	if err != nil {
-		return nil, err
-	}
-	if len(rows) == 0 {
-		return []portabilityEntryRecord{}, nil
-	}
 
-	start := 0
-	if len(rows[0]) > 0 && strings.EqualFold(strings.TrimSpace(rows[0][0]), "type") {
-		start = 1
-	}
-
-	records := make([]portabilityEntryRecord, 0, len(rows)-start)
-	for i := start; i < len(rows); i++ {
-		row := rows[i]
-		if len(row) < 7 {
-			return nil, fmt.Errorf("invalid csv row %d: expected 7 columns", i+1)
+	rowNumber := 0
+	for {
+		row, err := reader.Read()
+		if err == io.EOF {
+			return nil
 		}
-
-		amountMinor, err := strconv.ParseInt(strings.TrimSpace(row[1]), 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("invalid amount_minor at row %d: %w", i+1, err)
+			return err
 		}
 
-		var categoryID *int64
-		if strings.TrimSpace(row[4]) != "" {
-			parsedCategoryID, err := strconv.ParseInt(strings.TrimSpace(row[4]), 10, 64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid category_id at row %d: %w", i+1, err)
-			}
-			categoryID = &parsedCategoryID
+		rowNumber++
+		if rowNumber == 1 && len(row) > 0 && strings.EqualFold(strings.TrimSpace(row[0]), "type") {
+			continue
 		}
 
-		labelIDs := []int64{}
-		for _, part := range strings.Split(strings.TrimSpace(row[5]), "|") {
-			trimmed := strings.TrimSpace(part)
-			if trimmed == "" {
-				continue
-			}
-			parsedLabelID, err := strconv.ParseInt(trimmed, 10, 64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid label_ids value at row %d: %w", i+1, err)
-			}
-			labelIDs = append(labelIDs, parsedLabelID)
+		record, err := parseImportRecordCSVRow(row, rowNumber)
+		if err != nil {
+			return err
 		}
+		if err := consume(record); err != nil {
+			return err
+		}
+	}
+}
 
-		records = append(records, portabilityEntryRecord{
-			Type:               strings.TrimSpace(row[0]),
-			AmountMinor:        amountMinor,
-			CurrencyCode:       strings.TrimSpace(row[2]),
-			TransactionDateUTC: strings.TrimSpace(row[3]),
-			CategoryID:         categoryID,
-			LabelIDs:           labelIDs,
-			Note:               strings.TrimSpace(row[6]),
-		})
+func parseImportRecordCSVRow(row []string, rowNumber int) (portabilityEntryRecord, error) {
+	if len(row) < 7 {
+		return portabilityEntryRecord{}, fmt.Errorf("invalid csv row %d: expected 7 columns", rowNumber)
 	}
 
-	return records, nil
+	amountMinor, err := strconv.ParseInt(strings.TrimSpace(row[1]), 10, 64)
+	if err != nil {
+		return portabilityEntryRecord{}, fmt.Errorf("invalid amount_minor at row %d: %w", rowNumber, err)
+	}
+
+	var categoryID *int64
+	if strings.TrimSpace(row[4]) != "" {
+		parsedCategoryID, err := strconv.ParseInt(strings.TrimSpace(row[4]), 10, 64)
+		if err != nil {
+			return portabilityEntryRecord{}, fmt.Errorf("invalid category_id at row %d: %w", rowNumber, err)
+		}
+		categoryID = &parsedCategoryID
+	}
+
+	labelIDs := []int64{}
+	for _, part := range strings.Split(strings.TrimSpace(row[5]), "|") {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		parsedLabelID, err := strconv.ParseInt(trimmed, 10, 64)
+		if err != nil {
+			return portabilityEntryRecord{}, fmt.Errorf("invalid label_ids value at row %d: %w", rowNumber, err)
+		}
+		labelIDs = append(labelIDs, parsedLabelID)
+	}
+
+	return portabilityEntryRecord{
+		Type:               strings.TrimSpace(row[0]),
+		AmountMinor:        amountMinor,
+		CurrencyCode:       strings.TrimSpace(row[2]),
+		TransactionDateUTC: strings.TrimSpace(row[3]),
+		CategoryID:         categoryID,
+		LabelIDs:           labelIDs,
+		Note:               strings.TrimSpace(row[6]),
+	}, nil
 }
 
 func entrySignature(entry domain.Entry) string {

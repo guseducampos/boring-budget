@@ -6,9 +6,11 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -122,6 +124,145 @@ func TestPortabilityServiceImportIdempotentKeepsDuplicateHandling(t *testing.T) 
 
 	if count := activePortabilityTransactionCount(t, ctx, db); count != 2 {
 		t.Fatalf("expected exactly two active transactions after idempotent imports, got %d", count)
+	}
+}
+
+func TestPortabilityServiceImportAcceptsJSONArrayPayload(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	portabilitySvc, _, db := newPortabilityServiceTestHarness(t)
+	defer db.Close()
+
+	importPath := writePortabilityImportJSONArray(t, []portabilityEntryRecord{
+		{
+			Type:               domain.EntryTypeIncome,
+			AmountMinor:        8000,
+			CurrencyCode:       "USD",
+			TransactionDateUTC: "2026-04-01T00:00:00Z",
+			Note:               "salary",
+		},
+		{
+			Type:               domain.EntryTypeExpense,
+			AmountMinor:        2100,
+			CurrencyCode:       "USD",
+			TransactionDateUTC: "2026-04-02T00:00:00Z",
+			Note:               "groceries",
+		},
+	})
+
+	result, err := portabilitySvc.Import(ctx, PortabilityFormatJSON, importPath, false)
+	if err != nil {
+		t.Fatalf("import json array: %v", err)
+	}
+	if result.Imported != 2 || result.Skipped != 0 {
+		t.Fatalf("expected imported=2 skipped=0, got %+v", result)
+	}
+	if len(result.Warnings) != 0 {
+		t.Fatalf("expected no warnings, got %+v", result.Warnings)
+	}
+	if count := activePortabilityTransactionCount(t, ctx, db); count != 2 {
+		t.Fatalf("expected two imported transactions, got %d", count)
+	}
+}
+
+func TestPortabilityServiceImportStreamsLargeJSONPayload(t *testing.T) {
+	t.Parallel()
+
+	const recordCount = 1200
+
+	ctx := context.Background()
+	portabilitySvc, _, db := newPortabilityServiceTestHarness(t)
+	defer db.Close()
+
+	records := make([]portabilityEntryRecord, 0, recordCount)
+	for i := 0; i < recordCount; i++ {
+		records = append(records, portabilityEntryRecord{
+			Type:               domain.EntryTypeExpense,
+			AmountMinor:        int64(1000 + i),
+			CurrencyCode:       "USD",
+			TransactionDateUTC: "2026-05-01T00:00:00Z",
+			Note:               fmt.Sprintf("json-bulk-%d", i),
+		})
+	}
+
+	importPath := writePortabilityImportJSON(t, records)
+	first, err := portabilitySvc.Import(ctx, PortabilityFormatJSON, importPath, false)
+	if err != nil {
+		t.Fatalf("first large json import: %v", err)
+	}
+	if first.Imported != recordCount || first.Skipped != 0 {
+		t.Fatalf("expected imported=%d skipped=0, got %+v", recordCount, first)
+	}
+
+	second, err := portabilitySvc.Import(ctx, PortabilityFormatJSON, importPath, true)
+	if err != nil {
+		t.Fatalf("second large json import: %v", err)
+	}
+	if second.Imported != 0 || second.Skipped != recordCount {
+		t.Fatalf("expected imported=0 skipped=%d, got %+v", recordCount, second)
+	}
+
+	if count := activePortabilityTransactionCount(t, ctx, db); count != recordCount {
+		t.Fatalf("expected %d active transactions, got %d", recordCount, count)
+	}
+}
+
+func TestPortabilityServiceImportStreamsLargeCSVPayload(t *testing.T) {
+	t.Parallel()
+
+	const recordCount = 1200
+
+	ctx := context.Background()
+	portabilitySvc, _, db := newPortabilityServiceTestHarness(t)
+	defer db.Close()
+
+	importPath := writePortabilityImportCSV(t, recordCount)
+	first, err := portabilitySvc.Import(ctx, PortabilityFormatCSV, importPath, false)
+	if err != nil {
+		t.Fatalf("first large csv import: %v", err)
+	}
+	if first.Imported != recordCount || first.Skipped != 0 {
+		t.Fatalf("expected imported=%d skipped=0, got %+v", recordCount, first)
+	}
+
+	second, err := portabilitySvc.Import(ctx, PortabilityFormatCSV, importPath, true)
+	if err != nil {
+		t.Fatalf("second large csv import: %v", err)
+	}
+	if second.Imported != 0 || second.Skipped != recordCount {
+		t.Fatalf("expected imported=0 skipped=%d, got %+v", recordCount, second)
+	}
+
+	if count := activePortabilityTransactionCount(t, ctx, db); count != recordCount {
+		t.Fatalf("expected %d active transactions, got %d", recordCount, count)
+	}
+}
+
+func TestPortabilityServiceImportRollsBackWhenCSVParseFailsMidStream(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	portabilitySvc, _, db := newPortabilityServiceTestHarness(t)
+	defer db.Close()
+
+	importPath := filepath.Join(t.TempDir(), "import.csv")
+	writePortabilityCSVRows(t, importPath, [][]string{
+		{"type", "amount_minor", "currency_code", "transaction_date_utc", "category_id", "label_ids", "note"},
+		{"income", "1000", "USD", "2026-05-01T00:00:00Z", "", "", "valid"},
+		{"expense", "bad", "USD", "2026-05-02T00:00:00Z", "", "", "invalid"},
+	})
+
+	_, err := portabilitySvc.Import(ctx, PortabilityFormatCSV, importPath, false)
+	if err == nil {
+		t.Fatalf("expected csv parse error")
+	}
+	if !strings.Contains(err.Error(), "invalid amount_minor") {
+		t.Fatalf("expected amount_minor parse error, got %v", err)
+	}
+
+	if count := activePortabilityTransactionCount(t, ctx, db); count != 0 {
+		t.Fatalf("expected rollback to keep zero transactions, got %d", count)
 	}
 }
 
@@ -431,6 +572,86 @@ func writePortabilityImportJSON(t *testing.T, records []portabilityEntryRecord) 
 	}
 
 	return filePath
+}
+
+func writePortabilityImportJSONArray(t *testing.T, records []portabilityEntryRecord) string {
+	t.Helper()
+
+	filePath := filepath.Join(t.TempDir(), "import-array.json")
+	content, err := json.Marshal(records)
+	if err != nil {
+		t.Fatalf("marshal import array payload: %v", err)
+	}
+
+	if err := os.WriteFile(filePath, content, 0o644); err != nil {
+		t.Fatalf("write import array payload: %v", err)
+	}
+
+	return filePath
+}
+
+func writePortabilityImportCSV(t *testing.T, recordCount int) string {
+	t.Helper()
+
+	filePath := filepath.Join(t.TempDir(), "import.csv")
+	file, err := os.Create(filePath)
+	if err != nil {
+		t.Fatalf("create import csv: %v", err)
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	if err := writer.Write([]string{"type", "amount_minor", "currency_code", "transaction_date_utc", "category_id", "label_ids", "note"}); err != nil {
+		t.Fatalf("write import csv header: %v", err)
+	}
+
+	for i := 0; i < recordCount; i++ {
+		row := []string{
+			domain.EntryTypeExpense,
+			strconv.FormatInt(int64(1000+i), 10),
+			"USD",
+			"2026-05-01T00:00:00Z",
+			"",
+			"",
+			fmt.Sprintf("csv-bulk-%d", i),
+		}
+		if err := writer.Write(row); err != nil {
+			t.Fatalf("write import csv row: %v", err)
+		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		t.Fatalf("flush import csv writer: %v", err)
+	}
+
+	return filePath
+}
+
+func writePortabilityCSVRows(t *testing.T, filePath string, rows [][]string) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+		t.Fatalf("mkdir import csv dir: %v", err)
+	}
+
+	file, err := os.Create(filePath)
+	if err != nil {
+		t.Fatalf("create import csv file: %v", err)
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	for _, row := range rows {
+		if err := writer.Write(row); err != nil {
+			t.Fatalf("write import csv row: %v", err)
+		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		t.Fatalf("flush import csv writer: %v", err)
+	}
 }
 
 func activePortabilityTransactionCount(t *testing.T, ctx context.Context, db *sql.DB) int64 {

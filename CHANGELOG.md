@@ -136,6 +136,7 @@ The format follows a lightweight Keep a Changelog style.
     - `setup init`
 - Portability atomic-import tests:
   - `internal/service/portability_service_test.go`
+  - streaming JSON/CSV import behavior and rollback coverage for malformed mid-stream records
 - Data portability report export contract:
   - `docs/contracts/data-export-report.json`
 - SQLC entry query layer:
@@ -184,6 +185,7 @@ The format follows a lightweight Keep a Changelog style.
 - Report category totals now resolve and emit real category names in report outputs/exports (removing `Category <id>` placeholders).
 - `data export` now supports `--resource report` with report-specific flags and file exports in `json|csv`, while preserving entry export behavior.
 - Portability import transaction binding now uses explicit typed interfaces (`EntryRepositoryTxBinder` / `EntryCapLookupTxBinder`) instead of reflection-based `BindTx` lookup.
+- `data import` parsing now streams JSON/CSV records incrementally instead of loading full files in memory.
 - `docs/contracts/*.json` examples are now normalized to the same canonical payloads asserted by CLI golden tests.
 - `docs/contracts/README.md` now documents canonical JSON comparison and `<timestamp_utc>` placeholders for volatile fields.
 
@@ -207,6 +209,7 @@ The format follows a lightweight Keep a Changelog style.
 - Binary-level validation confirms non-zero mapped exit codes on command failures.
 - `go test ./...` covers timezone localization behavior and settings-driven orphan threshold evaluation.
 - `go test ./...` covers `data export --resource report` for JSON/CSV file generation and warning propagation.
+- `go test ./...` covers large streaming JSON/CSV imports and verifies atomic rollback on malformed mid-stream CSV rows.
 
 ## Progress Notes
 
