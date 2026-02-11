@@ -114,6 +114,8 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/service/entry_service_test.go`
   - `internal/store/sqlite/entry_repo_test.go`
   - `internal/cli/output/exit_code_test.go`
+- Data CLI regression tests:
+  - `internal/cli/data_test.go`
 - SQLC entry query layer:
   - `internal/store/sqlite/queries/entry.sql`
   - `internal/store/sqlite/sqlc/entry.sql.go`
@@ -167,6 +169,7 @@ The format follows a lightweight Keep a Changelog style.
 - End-to-end command checks pass for `entry add|list|delete` lifecycle operations in JSON mode.
 - End-to-end command checks pass for `cap set|show|history`.
 - `entry add` now emits `CAP_EXCEEDED` warning when month expense total is over cap.
+- `data` command group now has JSON regression coverage for export/import/idempotent flows and backup/restore.
 - End-to-end command checks pass for `report range|monthly|bimonthly|quarterly`.
 - End-to-end command checks pass for `balance show` (`lifetime|range|both` scopes).
 - `go test ./...` covers FX conversion logic and FX snapshot repository behavior.
