@@ -236,6 +236,17 @@ Primary package layout:
 go test ./...
 ```
 
+### CI
+
+- GitHub Actions workflow: `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/.github/workflows/ci.yml`
+- On `pull_request` and `push` to `master`, CI runs:
+  - tests on `ubuntu-latest`, `macos-latest`, `windows-latest`
+  - cross-platform builds for:
+    - `darwin/amd64`, `darwin/arm64`
+    - `linux/amd64`, `linux/arm64`
+    - `windows/amd64`
+- Build artifacts are uploaded per target with SHA256 checksum files.
+
 ### Important implementation notes
 
 - Migrations are managed with Goose.

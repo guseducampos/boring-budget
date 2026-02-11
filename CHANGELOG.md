@@ -155,6 +155,10 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/store/sqlite/sqlc/cap.sql.go`
 - Migration:
   - `migrations/0002_transaction_labels_transaction_active_index.sql`
+- CI scaffolding for cross-platform builds and tests:
+  - `.github/workflows/ci.yml`
+  - test matrix on Linux/macOS/Windows
+  - build artifacts for `darwin`, `linux`, and `windows`
 - Phase 2 tests:
   - `internal/service/category_service_test.go`
   - `internal/store/sqlite/category_repo_test.go`
