@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -698,19 +697,13 @@ func entrySignature(entry domain.Entry) string {
 }
 
 func bindEntryRepositoryToTx(repo EntryRepository, tx *sql.Tx) (EntryRepository, bool) {
-	method := reflect.ValueOf(repo).MethodByName("BindTx")
-	if !method.IsValid() {
+	binder, ok := repo.(EntryRepositoryTxBinder)
+	if !ok {
 		return nil, false
 	}
 
-	txArgType := reflect.TypeOf((*sql.Tx)(nil))
-	if method.Type().NumIn() != 1 || method.Type().In(0) != txArgType || method.Type().NumOut() != 1 {
-		return nil, false
-	}
-
-	results := method.Call([]reflect.Value{reflect.ValueOf(tx)})
-	boundRepo, ok := results[0].Interface().(EntryRepository)
-	if !ok || boundRepo == nil {
+	boundRepo := binder.BindTx(tx)
+	if boundRepo == nil {
 		return nil, false
 	}
 
@@ -718,19 +711,13 @@ func bindEntryRepositoryToTx(repo EntryRepository, tx *sql.Tx) (EntryRepository,
 }
 
 func bindEntryCapLookupToTx(capLookup EntryCapLookup, tx *sql.Tx) (EntryCapLookup, bool) {
-	method := reflect.ValueOf(capLookup).MethodByName("BindTx")
-	if !method.IsValid() {
+	binder, ok := capLookup.(EntryCapLookupTxBinder)
+	if !ok {
 		return nil, false
 	}
 
-	txArgType := reflect.TypeOf((*sql.Tx)(nil))
-	if method.Type().NumIn() != 1 || method.Type().In(0) != txArgType || method.Type().NumOut() != 1 {
-		return nil, false
-	}
-
-	results := method.Call([]reflect.Value{reflect.ValueOf(tx)})
-	boundCapLookup, ok := results[0].Interface().(EntryCapLookup)
-	if !ok || boundCapLookup == nil {
+	boundCapLookup := binder.BindTx(tx)
+	if boundCapLookup == nil {
 		return nil, false
 	}
 

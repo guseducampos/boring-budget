@@ -125,6 +125,46 @@ func TestPortabilityServiceImportIdempotentKeepsDuplicateHandling(t *testing.T) 
 	}
 }
 
+func TestPortabilityServiceImportRequiresTransactionalEntryRepositoryBinding(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	_, _, db := newPortabilityServiceTestHarness(t)
+	defer db.Close()
+
+	entrySvc, err := NewEntryService(nonTransactionalEntryRepo{})
+	if err != nil {
+		t.Fatalf("new entry service: %v", err)
+	}
+
+	portabilitySvc, err := NewPortabilityService(entrySvc, db)
+	if err != nil {
+		t.Fatalf("new portability service: %v", err)
+	}
+
+	importPath := writePortabilityImportJSON(t, []portabilityEntryRecord{
+		{
+			Type:               domain.EntryTypeIncome,
+			AmountMinor:        1000,
+			CurrencyCode:       "USD",
+			TransactionDateUTC: "2026-02-01T00:00:00Z",
+			Note:               "salary",
+		},
+	})
+
+	_, err = portabilitySvc.Import(ctx, PortabilityFormatJSON, importPath, false)
+	if err == nil {
+		t.Fatalf("expected transactional import binding error")
+	}
+	if !strings.Contains(err.Error(), "entry repository does not support transactional import") {
+		t.Fatalf("expected transactional binding error, got %v", err)
+	}
+
+	if count := activePortabilityTransactionCount(t, ctx, db); count != 0 {
+		t.Fatalf("expected rollback to keep zero transactions, got %d", count)
+	}
+}
+
 func TestPortabilityServiceExportReportJSON(t *testing.T) {
 	t.Parallel()
 
@@ -391,4 +431,22 @@ func activePortabilityTransactionCount(t *testing.T, ctx context.Context, db *sq
 	}
 
 	return count
+}
+
+type nonTransactionalEntryRepo struct{}
+
+func (nonTransactionalEntryRepo) Add(context.Context, domain.EntryAddInput) (domain.Entry, error) {
+	return domain.Entry{}, errors.New("not implemented")
+}
+
+func (nonTransactionalEntryRepo) Update(context.Context, domain.EntryUpdateInput) (domain.Entry, error) {
+	return domain.Entry{}, errors.New("not implemented")
+}
+
+func (nonTransactionalEntryRepo) List(context.Context, domain.EntryListFilter) ([]domain.Entry, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (nonTransactionalEntryRepo) Delete(context.Context, int64) (domain.EntryDeleteResult, error) {
+	return domain.EntryDeleteResult{}, errors.New("not implemented")
 }

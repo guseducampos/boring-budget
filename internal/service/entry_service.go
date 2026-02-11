@@ -7,24 +7,18 @@ import (
 	"strings"
 
 	"budgetto/internal/domain"
+	"budgetto/internal/ports"
 )
-
-type EntryRepository interface {
-	Add(ctx context.Context, input domain.EntryAddInput) (domain.Entry, error)
-	Update(ctx context.Context, input domain.EntryUpdateInput) (domain.Entry, error)
-	List(ctx context.Context, filter domain.EntryListFilter) ([]domain.Entry, error)
-	Delete(ctx context.Context, id int64) (domain.EntryDeleteResult, error)
-}
 
 type EntryService struct {
 	repo      EntryRepository
 	capLookup EntryCapLookup
 }
 
-type EntryCapLookup interface {
-	GetByMonth(ctx context.Context, monthKey string) (domain.MonthlyCap, error)
-	GetExpenseTotalByMonthAndCurrency(ctx context.Context, monthKey, currencyCode string) (int64, error)
-}
+type EntryRepository = ports.EntryRepository
+type EntryCapLookup = ports.EntryCapLookup
+type EntryRepositoryTxBinder = ports.EntryRepositoryTxBinder
+type EntryCapLookupTxBinder = ports.EntryCapLookupTxBinder
 
 type EntryServiceOption func(*EntryService)
 

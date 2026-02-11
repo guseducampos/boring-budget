@@ -168,6 +168,7 @@ The format follows a lightweight Keep a Changelog style.
 - Report service now reads orphan warning thresholds from settings when available.
 - Report command wiring now injects settings reader consistently, including FX-enabled report mode.
 - `data export` now supports `--resource report` with report-specific flags and file exports in `json|csv`, while preserving entry export behavior.
+- Portability import transaction binding now uses explicit typed interfaces (`EntryRepositoryTxBinder` / `EntryCapLookupTxBinder`) instead of reflection-based `BindTx` lookup.
 
 ### Verified
 

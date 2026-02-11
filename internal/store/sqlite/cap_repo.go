@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"budgetto/internal/domain"
+	"budgetto/internal/ports"
 	queries "budgetto/internal/store/sqlite/sqlc"
 )
 
@@ -16,6 +17,8 @@ type CapRepo struct {
 	tx      *sql.Tx
 }
 
+var _ ports.EntryCapLookupTxBinder = (*CapRepo)(nil)
+
 func NewCapRepo(db *sql.DB) *CapRepo {
 	return &CapRepo{
 		db:      db,
@@ -23,7 +26,7 @@ func NewCapRepo(db *sql.DB) *CapRepo {
 	}
 }
 
-func (r *CapRepo) BindTx(tx *sql.Tx) *CapRepo {
+func (r *CapRepo) BindTx(tx *sql.Tx) ports.EntryCapLookup {
 	if tx == nil {
 		return r
 	}

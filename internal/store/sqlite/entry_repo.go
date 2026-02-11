@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"budgetto/internal/domain"
+	"budgetto/internal/ports"
 	queries "budgetto/internal/store/sqlite/sqlc"
 )
 
@@ -17,6 +18,8 @@ type EntryRepo struct {
 	tx      *sql.Tx
 }
 
+var _ ports.EntryRepositoryTxBinder = (*EntryRepo)(nil)
+
 func NewEntryRepo(db *sql.DB) *EntryRepo {
 	return &EntryRepo{
 		db:      db,
@@ -24,7 +27,7 @@ func NewEntryRepo(db *sql.DB) *EntryRepo {
 	}
 }
 
-func (r *EntryRepo) BindTx(tx *sql.Tx) *EntryRepo {
+func (r *EntryRepo) BindTx(tx *sql.Tx) ports.EntryRepository {
 	if tx == nil {
 		return r
 	}
