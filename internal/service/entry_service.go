@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -15,41 +16,76 @@ type EntryRepository interface {
 }
 
 type EntryService struct {
-	repo EntryRepository
+	repo      EntryRepository
+	capLookup EntryCapLookup
 }
 
-func NewEntryService(repo EntryRepository) (*EntryService, error) {
+type EntryCapLookup interface {
+	GetByMonth(ctx context.Context, monthKey string) (domain.MonthlyCap, error)
+	GetExpenseTotalByMonthAndCurrency(ctx context.Context, monthKey, currencyCode string) (int64, error)
+}
+
+type EntryServiceOption func(*EntryService)
+
+func WithEntryCapLookup(capLookup EntryCapLookup) EntryServiceOption {
+	return func(service *EntryService) {
+		service.capLookup = capLookup
+	}
+}
+
+type EntryAddResult struct {
+	Entry    domain.Entry     `json:"entry"`
+	Warnings []domain.Warning `json:"warnings"`
+}
+
+func NewEntryService(repo EntryRepository, opts ...EntryServiceOption) (*EntryService, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("entry service: repo is required")
 	}
-	return &EntryService{repo: repo}, nil
+
+	service := &EntryService{repo: repo}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(service)
+		}
+	}
+
+	return service, nil
 }
 
 func (s *EntryService) Add(ctx context.Context, input domain.EntryAddInput) (domain.Entry, error) {
-	normalizedType, err := domain.NormalizeEntryType(input.Type)
+	result, err := s.AddWithWarnings(ctx, input)
 	if err != nil {
 		return domain.Entry{}, err
 	}
+	return result.Entry, nil
+}
+
+func (s *EntryService) AddWithWarnings(ctx context.Context, input domain.EntryAddInput) (EntryAddResult, error) {
+	normalizedType, err := domain.NormalizeEntryType(input.Type)
+	if err != nil {
+		return EntryAddResult{}, err
+	}
 	if err := domain.ValidateAmountMinor(input.AmountMinor); err != nil {
-		return domain.Entry{}, err
+		return EntryAddResult{}, err
 	}
 	normalizedCurrency, err := domain.NormalizeCurrencyCode(input.CurrencyCode)
 	if err != nil {
-		return domain.Entry{}, err
+		return EntryAddResult{}, err
 	}
 	normalizedDate, err := domain.NormalizeTransactionDateUTC(input.TransactionDateUTC)
 	if err != nil {
-		return domain.Entry{}, err
+		return EntryAddResult{}, err
 	}
 	if err := domain.ValidateOptionalCategoryID(input.CategoryID); err != nil {
-		return domain.Entry{}, err
+		return EntryAddResult{}, err
 	}
 	normalizedLabelIDs, err := domain.NormalizeLabelIDs(input.LabelIDs)
 	if err != nil {
-		return domain.Entry{}, err
+		return EntryAddResult{}, err
 	}
 
-	return s.repo.Add(ctx, domain.EntryAddInput{
+	entry, err := s.repo.Add(ctx, domain.EntryAddInput{
 		Type:               normalizedType,
 		AmountMinor:        input.AmountMinor,
 		CurrencyCode:       normalizedCurrency,
@@ -58,6 +94,66 @@ func (s *EntryService) Add(ctx context.Context, input domain.EntryAddInput) (dom
 		LabelIDs:           normalizedLabelIDs,
 		Note:               strings.TrimSpace(input.Note),
 	})
+	if err != nil {
+		return EntryAddResult{}, err
+	}
+
+	result := EntryAddResult{
+		Entry:    entry,
+		Warnings: []domain.Warning{},
+	}
+
+	if entry.Type != domain.EntryTypeExpense || s.capLookup == nil {
+		return result, nil
+	}
+
+	monthKey, err := domain.MonthKeyFromDateTimeUTC(entry.TransactionDateUTC)
+	if err != nil {
+		return result, nil
+	}
+
+	capValue, err := s.capLookup.GetByMonth(ctx, monthKey)
+	if err != nil {
+		if errors.Is(err, domain.ErrCapNotFound) {
+			return result, nil
+		}
+		return result, nil
+	}
+
+	if capValue.CurrencyCode != entry.CurrencyCode {
+		return result, nil
+	}
+
+	totalSpend, err := s.capLookup.GetExpenseTotalByMonthAndCurrency(ctx, monthKey, entry.CurrencyCode)
+	if err != nil {
+		return result, nil
+	}
+
+	if totalSpend <= capValue.AmountMinor {
+		return result, nil
+	}
+
+	result.Warnings = append(result.Warnings, domain.Warning{
+		Code:    domain.WarningCodeCapExceeded,
+		Message: domain.CapExceededWarningMessage,
+		Details: domain.CapExceededWarningDetails{
+			MonthKey: monthKey,
+			CapAmount: domain.MoneyAmount{
+				AmountMinor:  capValue.AmountMinor,
+				CurrencyCode: capValue.CurrencyCode,
+			},
+			NewSpendTotal: domain.MoneyAmount{
+				AmountMinor:  totalSpend,
+				CurrencyCode: entry.CurrencyCode,
+			},
+			OverspendAmount: domain.MoneyAmount{
+				AmountMinor:  totalSpend - capValue.AmountMinor,
+				CurrencyCode: entry.CurrencyCode,
+			},
+		},
+	})
+
+	return result, nil
 }
 
 func (s *EntryService) List(ctx context.Context, filter domain.EntryListFilter) ([]domain.Entry, error) {

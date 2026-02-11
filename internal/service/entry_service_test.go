@@ -27,6 +27,19 @@ func (s *entryRepoStub) Delete(ctx context.Context, id int64) (domain.EntryDelet
 	return s.deleteFn(ctx, id)
 }
 
+type entryCapLookupStub struct {
+	getByMonthFn     func(ctx context.Context, monthKey string) (domain.MonthlyCap, error)
+	expenseTotalFn   func(ctx context.Context, monthKey, currencyCode string) (int64, error)
+}
+
+func (s *entryCapLookupStub) GetByMonth(ctx context.Context, monthKey string) (domain.MonthlyCap, error) {
+	return s.getByMonthFn(ctx, monthKey)
+}
+
+func (s *entryCapLookupStub) GetExpenseTotalByMonthAndCurrency(ctx context.Context, monthKey, currencyCode string) (int64, error) {
+	return s.expenseTotalFn(ctx, monthKey, currencyCode)
+}
+
 func TestNewEntryServiceRequiresRepo(t *testing.T) {
 	t.Parallel()
 
@@ -203,5 +216,135 @@ func TestEntryServiceDeleteRejectsInvalidID(t *testing.T) {
 	_, err = svc.Delete(context.Background(), 0)
 	if !errors.Is(err, domain.ErrInvalidEntryID) {
 		t.Fatalf("expected ErrInvalidEntryID, got %v", err)
+	}
+}
+
+func TestEntryServiceAddWithWarningsReturnsCapExceededWarning(t *testing.T) {
+	t.Parallel()
+
+	entryDateUTC := "2026-02-11T10:00:00Z"
+	svc, err := NewEntryService(
+		&entryRepoStub{
+			addFn: func(ctx context.Context, input domain.EntryAddInput) (domain.Entry, error) {
+				return domain.Entry{
+					ID:                 22,
+					Type:               input.Type,
+					AmountMinor:        input.AmountMinor,
+					CurrencyCode:       input.CurrencyCode,
+					TransactionDateUTC: input.TransactionDateUTC,
+				}, nil
+			},
+			listFn:   func(context.Context, domain.EntryListFilter) ([]domain.Entry, error) { return nil, nil },
+			deleteFn: func(context.Context, int64) (domain.EntryDeleteResult, error) { return domain.EntryDeleteResult{}, nil },
+		},
+		WithEntryCapLookup(&entryCapLookupStub{
+			getByMonthFn: func(ctx context.Context, monthKey string) (domain.MonthlyCap, error) {
+				if monthKey != "2026-02" {
+					t.Fatalf("expected month key 2026-02, got %q", monthKey)
+				}
+				return domain.MonthlyCap{MonthKey: "2026-02", AmountMinor: 50000, CurrencyCode: "USD"}, nil
+			},
+			expenseTotalFn: func(ctx context.Context, monthKey, currencyCode string) (int64, error) {
+				if monthKey != "2026-02" {
+					t.Fatalf("expected month key 2026-02 for total, got %q", monthKey)
+				}
+				if currencyCode != "USD" {
+					t.Fatalf("expected USD for total lookup, got %q", currencyCode)
+				}
+				return 62000, nil
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("new entry service: %v", err)
+	}
+
+	addResult, err := svc.AddWithWarnings(context.Background(), domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        12000,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: entryDateUTC,
+	})
+	if err != nil {
+		t.Fatalf("add with warnings: %v", err)
+	}
+
+	if addResult.Entry.ID != 22 {
+		t.Fatalf("expected entry id 22, got %d", addResult.Entry.ID)
+	}
+	if len(addResult.Warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %d", len(addResult.Warnings))
+	}
+
+	warning := addResult.Warnings[0]
+	if warning.Code != domain.WarningCodeCapExceeded {
+		t.Fatalf("expected CAP_EXCEEDED warning, got %q", warning.Code)
+	}
+	if warning.Message != domain.CapExceededWarningMessage {
+		t.Fatalf("unexpected warning message %q", warning.Message)
+	}
+
+	details, ok := warning.Details.(domain.CapExceededWarningDetails)
+	if !ok {
+		t.Fatalf("expected CapExceededWarningDetails, got %T", warning.Details)
+	}
+
+	if details.MonthKey != "2026-02" {
+		t.Fatalf("expected month key 2026-02, got %q", details.MonthKey)
+	}
+	if details.CapAmount.AmountMinor != 50000 || details.CapAmount.CurrencyCode != "USD" {
+		t.Fatalf("unexpected cap amount details: %+v", details.CapAmount)
+	}
+	if details.NewSpendTotal.AmountMinor != 62000 || details.NewSpendTotal.CurrencyCode != "USD" {
+		t.Fatalf("unexpected new spend details: %+v", details.NewSpendTotal)
+	}
+	if details.OverspendAmount.AmountMinor != 12000 || details.OverspendAmount.CurrencyCode != "USD" {
+		t.Fatalf("unexpected overspend details: %+v", details.OverspendAmount)
+	}
+}
+
+func TestEntryServiceAddWithWarningsSkipsDifferentCapCurrency(t *testing.T) {
+	t.Parallel()
+
+	svc, err := NewEntryService(
+		&entryRepoStub{
+			addFn: func(ctx context.Context, input domain.EntryAddInput) (domain.Entry, error) {
+				return domain.Entry{
+					ID:                 23,
+					Type:               input.Type,
+					AmountMinor:        input.AmountMinor,
+					CurrencyCode:       input.CurrencyCode,
+					TransactionDateUTC: input.TransactionDateUTC,
+				}, nil
+			},
+			listFn:   func(context.Context, domain.EntryListFilter) ([]domain.Entry, error) { return nil, nil },
+			deleteFn: func(context.Context, int64) (domain.EntryDeleteResult, error) { return domain.EntryDeleteResult{}, nil },
+		},
+		WithEntryCapLookup(&entryCapLookupStub{
+			getByMonthFn: func(ctx context.Context, monthKey string) (domain.MonthlyCap, error) {
+				return domain.MonthlyCap{MonthKey: monthKey, AmountMinor: 10000, CurrencyCode: "EUR"}, nil
+			},
+			expenseTotalFn: func(ctx context.Context, monthKey, currencyCode string) (int64, error) {
+				t.Fatalf("did not expect expense total lookup when cap currency differs")
+				return 0, nil
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("new entry service: %v", err)
+	}
+
+	addResult, err := svc.AddWithWarnings(context.Background(), domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        2000,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-11T10:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("add with warnings: %v", err)
+	}
+
+	if len(addResult.Warnings) != 0 {
+		t.Fatalf("expected no warnings for different cap currency, got %+v", addResult.Warnings)
 	}
 }
