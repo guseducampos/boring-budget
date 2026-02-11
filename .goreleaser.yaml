@@ -1,0 +1,52 @@
+version: 2
+
+project_name: boring-budget
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: boring-budget
+    main: ./cmd/boring-budget
+    binary: boring-budget
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+
+checksum:
+  name_template: checksums.txt
+
+brews:
+  - name: boring-budget
+    repository:
+      owner: gustavocampos
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/gustavocampos/boring-budget"
+    description: "Local-first budgeting CLI with deterministic JSON contracts"
+    commit_author:
+      name: boring-budget bot
+      email: actions@github.com
+    commit_msg_template: "chore(brew): update boring-budget formula to {{ .Tag }}"
+    test: |
+      system "#{bin}/boring-budget", "--help"

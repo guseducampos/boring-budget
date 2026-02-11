@@ -59,6 +59,21 @@ Then verify:
 boring-budget --help
 ```
 
+### Homebrew
+
+Once releases are published, install with:
+
+```bash
+brew tap gustavocampos/tap
+brew install boring-budget
+```
+
+Or one-liner:
+
+```bash
+brew install gustavocampos/tap/boring-budget
+```
+
 ### Build from source (development)
 
 Prerequisite:
@@ -263,6 +278,10 @@ go test ./...
     - `linux/amd64`, `linux/arm64`
     - `windows/amd64`
 - Build artifacts are uploaded per target with SHA256 checksum files.
+- Release workflow: `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/.github/workflows/release.yml`
+  - Triggered on `v*` tags
+  - Publishes GitHub release assets using GoReleaser
+  - Updates Homebrew formula in `gustavocampos/homebrew-tap` (requires `HOMEBREW_TAP_GITHUB_TOKEN` secret)
 
 ### Important implementation notes
 

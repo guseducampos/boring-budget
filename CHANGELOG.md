@@ -159,6 +159,11 @@ The format follows a lightweight Keep a Changelog style.
   - `.github/workflows/ci.yml`
   - test matrix on Linux/macOS/Windows
   - build artifacts for `darwin`, `linux`, and `windows`
+- Release/Homebrew scaffolding:
+  - `.github/workflows/release.yml`
+  - `.goreleaser.yaml`
+  - `docs/RELEASING.md`
+  - automated Homebrew tap formula update for `gustavocampos/homebrew-tap`
 - Phase 2 tests:
   - `internal/service/category_service_test.go`
   - `internal/store/sqlite/category_repo_test.go`
