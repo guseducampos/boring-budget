@@ -128,10 +128,18 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/cli/json_contracts_docs_sync_test.go`
   - `internal/cli/testdata/json_contracts/entry_update.golden.json`
   - `internal/cli/testdata/json_contracts/setup_init.golden.json`
+  - `internal/cli/testdata/json_contracts/balance_show.golden.json`
+  - `internal/cli/testdata/json_contracts/cap_show.golden.json`
+  - `internal/cli/testdata/json_contracts/cap_history.golden.json`
+  - `internal/cli/testdata/json_contracts/report_range.golden.json`
+  - `internal/cli/testdata/json_contracts/report_bimonthly.golden.json`
+  - `internal/cli/testdata/json_contracts/report_quarterly.golden.json`
   - sync coverage for `docs/contracts` examples:
     - `entry add|update`
     - `cap set`
-    - `report monthly`
+    - `cap show|history`
+    - `report monthly|range|bimonthly|quarterly`
+    - `balance show`
     - `data export --resource entries|report`
     - `setup init`
 - Portability atomic-import tests:
@@ -191,6 +199,7 @@ The format follows a lightweight Keep a Changelog style.
 - `data restore` now uses command context, validates post-restore DB integrity, and rolls back to a pre-restore snapshot when validation fails.
 - `docs/contracts/*.json` examples are now normalized to the same canonical payloads asserted by CLI golden tests.
 - `docs/contracts/README.md` now documents canonical JSON comparison and `<timestamp_utc>` placeholders for volatile fields.
+- Added additional docs contract examples: `balance-show.json`, `cap-show.json`, `cap-history.json`, `report-range.json`, `report-bimonthly.json`, and `report-quarterly.json`.
 
 ### Verified
 
@@ -216,6 +225,7 @@ The format follows a lightweight Keep a Changelog style.
 - `go test ./...` covers deterministic batched label loading for `entry list` and filtered label-link query ordering.
 - `go test ./...` covers report category label resolution via `ListByIDs` and deterministic category-id normalization/filtering.
 - `go test ./...` covers restore rollback on invalid backup content and cleanup of restore temp/snapshot artifacts.
+- `go test ./...` enforces docs contract sync for balance, cap show/history, and additional report scope variants.
 
 ## Progress Notes
 

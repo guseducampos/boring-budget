@@ -1,0 +1,80 @@
+{
+  "data": {
+    "cap_changes": [],
+    "cap_status": [],
+    "earnings": {
+      "by_currency": [
+        {
+          "currency_code": "USD",
+          "total_minor": 5000
+        }
+      ],
+      "categories": [
+        {
+          "category_key": "orphan",
+          "category_label": "Orphan",
+          "currency_code": "USD",
+          "total_minor": 5000
+        }
+      ],
+      "groups": [
+        {
+          "currency_code": "USD",
+          "period_key": "2026-02",
+          "total_minor": 5000
+        }
+      ]
+    },
+    "grouping": "month",
+    "net": {
+      "by_currency": [
+        {
+          "currency_code": "USD",
+          "total_minor": 3500
+        }
+      ]
+    },
+    "period": {
+      "from_utc": "2026-02-01T00:00:00Z",
+      "month_key": "2026-02",
+      "scope": "quarterly",
+      "to_utc": "2026-04-30T23:59:59.999999999Z"
+    },
+    "spending": {
+      "by_currency": [
+        {
+          "currency_code": "USD",
+          "total_minor": 1500
+        }
+      ],
+      "categories": [
+        {
+          "category_id": 1,
+          "category_key": "category:1",
+          "category_label": "Rent",
+          "currency_code": "USD",
+          "total_minor": 1500
+        }
+      ],
+      "groups": [
+        {
+          "currency_code": "USD",
+          "period_key": "2026-03",
+          "total_minor": 1000
+        },
+        {
+          "currency_code": "USD",
+          "period_key": "2026-04",
+          "total_minor": 500
+        }
+      ]
+    }
+  },
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "<timestamp_utc>"
+  },
+  "ok": true,
+  "warnings": []
+}

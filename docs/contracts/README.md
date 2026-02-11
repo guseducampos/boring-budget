@@ -30,7 +30,13 @@ Rules:
 - `entry-add.json`: `entry add --output json` success contract.
 - `entry-update.json`: `entry update --output json` success contract.
 - `cap-set.json`: `cap set --output json` success contract with cap history change.
+- `cap-show.json`: `cap show --output json` success contract.
+- `cap-history.json`: `cap history --output json` success contract.
 - `report-monthly.json`: `report monthly --output json` success contract.
+- `report-range.json`: `report range --output json` success contract.
+- `report-bimonthly.json`: `report bimonthly --output json` success contract.
+- `report-quarterly.json`: `report quarterly --output json` success contract.
+- `balance-show.json`: `balance show --output json` success contract.
 - `setup-init.json`: `setup init --output json` onboarding success contract.
 - `data-export.json`: `data export --resource entries --output json` success contract.
 - `data-export-report.json`: `data export --resource report --output json` success contract.

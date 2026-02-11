@@ -55,6 +55,60 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		assertJSONContractGolden(t, "cap_set.golden.json", raw)
 	})
 
+	t.Run("cap_show", func(t *testing.T) {
+		db := newCLITestDB(t)
+		t.Cleanup(func() { _ = db.Close() })
+
+		setPayload := executeCapCmdJSON(t, db, []string{
+			"set",
+			"--month", "2026-02",
+			"--amount-minor", "45000",
+			"--currency", "USD",
+		})
+		if ok, _ := setPayload["ok"].(bool); !ok {
+			t.Fatalf("expected cap set ok=true payload=%v", setPayload)
+		}
+
+		raw := executeCapCmdRaw(t, db, output.FormatJSON, []string{
+			"show",
+			"--month", "2026-02",
+		})
+
+		assertJSONContractGolden(t, "cap_show.golden.json", raw)
+	})
+
+	t.Run("cap_history", func(t *testing.T) {
+		db := newCLITestDB(t)
+		t.Cleanup(func() { _ = db.Close() })
+
+		firstSet := executeCapCmdJSON(t, db, []string{
+			"set",
+			"--month", "2026-02",
+			"--amount-minor", "45000",
+			"--currency", "USD",
+		})
+		if ok, _ := firstSet["ok"].(bool); !ok {
+			t.Fatalf("expected first cap set ok=true payload=%v", firstSet)
+		}
+
+		secondSet := executeCapCmdJSON(t, db, []string{
+			"set",
+			"--month", "2026-02",
+			"--amount-minor", "50000",
+			"--currency", "USD",
+		})
+		if ok, _ := secondSet["ok"].(bool); !ok {
+			t.Fatalf("expected second cap set ok=true payload=%v", secondSet)
+		}
+
+		raw := executeCapCmdRaw(t, db, output.FormatJSON, []string{
+			"history",
+			"--month", "2026-02",
+		})
+
+		assertJSONContractGolden(t, "cap_history.golden.json", raw)
+	})
+
 	t.Run("entry_update", func(t *testing.T) {
 		db := newCLITestDB(t)
 		t.Cleanup(func() { _ = db.Close() })
@@ -130,6 +184,180 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		})
 
 		assertJSONContractGolden(t, "report_monthly.golden.json", raw)
+	})
+
+	t.Run("report_range", func(t *testing.T) {
+		db := newCLITestDB(t)
+		t.Cleanup(func() { _ = db.Close() })
+
+		categoryID := insertTestCategory(t, db, "Food")
+		labelID := insertTestLabel(t, db, "work")
+
+		capSetPayload := executeCapCmdJSON(t, db, []string{
+			"set",
+			"--month", "2026-02",
+			"--amount-minor", "1800",
+			"--currency", "USD",
+		})
+		if ok, _ := capSetPayload["ok"].(bool); !ok {
+			t.Fatalf("expected cap set ok=true payload=%v", capSetPayload)
+		}
+
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "income",
+			"--amount-minor", "5000",
+			"--currency", "USD",
+			"--date", "2026-02-01",
+			"--label-id", int64ToString(labelID),
+		}))
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "expense",
+			"--amount-minor", "1200",
+			"--currency", "USD",
+			"--date", "2026-02-02",
+			"--category-id", int64ToString(categoryID),
+			"--label-id", int64ToString(labelID),
+		}))
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "expense",
+			"--amount-minor", "400",
+			"--currency", "EUR",
+			"--date", "2026-02-10",
+			"--category-id", int64ToString(categoryID),
+		}))
+
+		raw := executeReportCmdRaw(t, db, output.FormatJSON, []string{
+			"range",
+			"--from", "2026-02-01",
+			"--to", "2026-02-28",
+			"--label-id", int64ToString(labelID),
+			"--label-mode", "all",
+			"--group-by", "day",
+		})
+
+		assertJSONContractGolden(t, "report_range.golden.json", raw)
+	})
+
+	t.Run("report_bimonthly", func(t *testing.T) {
+		db := newCLITestDB(t)
+		t.Cleanup(func() { _ = db.Close() })
+
+		categoryID := insertTestCategory(t, db, "Rent")
+
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "income",
+			"--amount-minor", "5000",
+			"--currency", "USD",
+			"--date", "2026-02-01",
+		}))
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "expense",
+			"--amount-minor", "1000",
+			"--currency", "USD",
+			"--date", "2026-03-03",
+			"--category-id", int64ToString(categoryID),
+		}))
+
+		raw := executeReportCmdRaw(t, db, output.FormatJSON, []string{
+			"bimonthly",
+			"--month", "2026-02",
+			"--group-by", "month",
+		})
+
+		assertJSONContractGolden(t, "report_bimonthly.golden.json", raw)
+	})
+
+	t.Run("report_quarterly", func(t *testing.T) {
+		db := newCLITestDB(t)
+		t.Cleanup(func() { _ = db.Close() })
+
+		categoryID := insertTestCategory(t, db, "Rent")
+
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "income",
+			"--amount-minor", "5000",
+			"--currency", "USD",
+			"--date", "2026-02-01",
+		}))
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "expense",
+			"--amount-minor", "1000",
+			"--currency", "USD",
+			"--date", "2026-03-03",
+			"--category-id", int64ToString(categoryID),
+		}))
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "expense",
+			"--amount-minor", "500",
+			"--currency", "USD",
+			"--date", "2026-04-10",
+			"--category-id", int64ToString(categoryID),
+		}))
+
+		raw := executeReportCmdRaw(t, db, output.FormatJSON, []string{
+			"quarterly",
+			"--month", "2026-02",
+			"--group-by", "month",
+		})
+
+		assertJSONContractGolden(t, "report_quarterly.golden.json", raw)
+	})
+
+	t.Run("balance_show", func(t *testing.T) {
+		db := newCLITestDB(t)
+		t.Cleanup(func() { _ = db.Close() })
+
+		labelID := insertTestLabel(t, db, "work")
+
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "income",
+			"--amount-minor", "10000",
+			"--currency", "USD",
+			"--date", "2026-01-10",
+			"--label-id", int64ToString(labelID),
+		}))
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "expense",
+			"--amount-minor", "3000",
+			"--currency", "USD",
+			"--date", "2026-02-05",
+			"--label-id", int64ToString(labelID),
+		}))
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "expense",
+			"--amount-minor", "500",
+			"--currency", "USD",
+			"--date", "2026-03-01",
+		}))
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "income",
+			"--amount-minor", "700",
+			"--currency", "EUR",
+			"--date", "2026-02-10",
+		}))
+
+		raw := executeBalanceCmdRaw(t, db, output.FormatJSON, []string{
+			"show",
+			"--scope", "both",
+			"--from", "2026-02-01",
+			"--to", "2026-02-28",
+			"--label-id", int64ToString(labelID),
+			"--label-mode", "any",
+		})
+
+		assertJSONContractGolden(t, "balance_show.golden.json", raw)
 	})
 
 	t.Run("data_export_entries", func(t *testing.T) {

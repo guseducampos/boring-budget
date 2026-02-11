@@ -1,0 +1,31 @@
+{
+  "data": {
+    "changes": [
+      {
+        "changed_at_utc": "<timestamp_utc>",
+        "currency_code": "USD",
+        "id": 1,
+        "month_key": "2026-02",
+        "new_amount_minor": 45000,
+        "old_amount_minor": null
+      },
+      {
+        "changed_at_utc": "<timestamp_utc>",
+        "currency_code": "USD",
+        "id": 2,
+        "month_key": "2026-02",
+        "new_amount_minor": 50000,
+        "old_amount_minor": 45000
+      }
+    ],
+    "count": 2,
+    "month_key": "2026-02"
+  },
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "<timestamp_utc>"
+  },
+  "ok": true,
+  "warnings": []
+}

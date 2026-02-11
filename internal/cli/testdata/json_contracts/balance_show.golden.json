@@ -1,0 +1,30 @@
+{
+  "data": {
+    "lifetime": {
+      "by_currency": [
+        {
+          "currency_code": "USD",
+          "net_minor": 7000
+        }
+      ]
+    },
+    "range": {
+      "by_currency": [
+        {
+          "currency_code": "USD",
+          "net_minor": -3000
+        }
+      ],
+      "from_utc": "2026-02-01T00:00:00Z",
+      "to_utc": "2026-02-28T23:59:59.999999999Z"
+    },
+    "scope": "both"
+  },
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "<timestamp_utc>"
+  },
+  "ok": true,
+  "warnings": []
+}
