@@ -1,0 +1,39 @@
+{
+  "data": {
+    "file": "report.json",
+    "format": "json",
+    "grouping": "month",
+    "period": {
+      "from_utc": "2026-02-01T00:00:00Z",
+      "month_key": "2026-02",
+      "scope": "monthly",
+      "to_utc": "2026-02-28T23:59:59.999999999Z"
+    },
+    "resource": "report"
+  },
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "<timestamp_utc>"
+  },
+  "ok": true,
+  "warnings": [
+    {
+      "code": "ORPHAN_SPENDING_THRESHOLD_EXCEEDED",
+      "details": {
+        "cap_amount_minor": null,
+        "currency_code": "USD",
+        "month_key": "2026-02",
+        "month_spend_minor": 3000,
+        "orphan_spend_minor": 3000,
+        "ratio_to_cap_bps": 0,
+        "ratio_to_month_spend_bps": 10000,
+        "threshold_bps": 500,
+        "triggered_by": [
+          "MONTH_SPEND"
+        ]
+      },
+      "message": "Orphan spending exceeds the configured threshold for one or more months."
+    }
+  ]
+}

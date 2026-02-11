@@ -119,6 +119,7 @@ The format follows a lightweight Keep a Changelog style.
 - Golden JSON contract coverage for key agent commands:
   - `internal/cli/json_contracts_golden_test.go`
   - `internal/cli/testdata/json_contracts/*`
+- Golden JSON contract coverage now includes `data export --resource report` with deterministic normalization for volatile timestamps and temp file paths.
 - Portability atomic-import tests:
   - `internal/service/portability_service_test.go`
 - Data portability report export contract:

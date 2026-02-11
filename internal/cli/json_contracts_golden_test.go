@@ -121,6 +121,46 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 
 		assertJSONContractGolden(t, "data_export_entries.golden.json", raw)
 	})
+
+	t.Run("data_export_report", func(t *testing.T) {
+		db := newCLITestDB(t)
+		t.Cleanup(func() { _ = db.Close() })
+
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "income",
+			"--amount-minor", "12000",
+			"--currency", "USD",
+			"--date", "2026-02-01",
+			"--note", "salary",
+		}))
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "expense",
+			"--amount-minor", "3000",
+			"--currency", "USD",
+			"--date", "2026-02-05",
+			"--note", "rent",
+		}))
+
+		exportPath := filepath.Join(t.TempDir(), "exports", "report.json")
+		opts := &RootOptions{Output: output.FormatJSON, db: db}
+		raw := executeDataCmdRawWithOptions(t, opts, []string{
+			"export",
+			"--resource", "report",
+			"--format", "json",
+			"--file", exportPath,
+			"--report-scope", "monthly",
+			"--report-month", "2026-02",
+			"--report-group-by", "month",
+		})
+
+		if _, err := os.Stat(exportPath); err != nil {
+			t.Fatalf("expected report export file at %q: %v", exportPath, err)
+		}
+
+		assertJSONContractGolden(t, "data_export_report.golden.json", raw)
+	})
 }
 
 func assertJSONContractGolden(t *testing.T, fixtureName, rawJSON string) {
@@ -185,13 +225,22 @@ func normalizeJSONContractValue(key string, value any) any {
 		switch {
 		case key == "timestamp_utc" || strings.HasSuffix(key, "_at_utc"):
 			return "<timestamp_utc>"
-		case key == "file":
+		case isPathField(key):
 			return filepath.Base(typed)
 		default:
 			return typed
 		}
 	default:
 		return value
+	}
+}
+
+func isPathField(key string) bool {
+	switch key {
+	case "file", "backup_file", "db_path", "restored_from":
+		return true
+	default:
+		return false
 	}
 }
 
