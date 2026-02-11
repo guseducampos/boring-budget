@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "data": {
+    "exported": 42,
+    "file": "./backup/entries.json",
+    "format": "json"
+  },
+  "warnings": [],
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "2026-02-11T00:00:00Z"
+  }
+}

@@ -84,6 +84,18 @@ go run ./cmd/budgetto balance show --scope both --from 2026-02-01 --to 2026-02-2
 go run ./cmd/budgetto balance show --scope lifetime
 go run ./cmd/budgetto balance show --scope range --from 2026-02-01 --to 2026-02-28 --convert-to USD
 ```
+- Setup:
+```bash
+go run ./cmd/budgetto setup init --default-currency USD --timezone UTC --opening-balance-minor 100000 --month-cap-minor 50000
+go run ./cmd/budgetto setup show
+```
+- Data Portability:
+```bash
+go run ./cmd/budgetto data export --format json --file ./backup/entries.json --from 2026-01-01 --to 2026-12-31
+go run ./cmd/budgetto data import --format csv --file ./seed/entries.csv --idempotent
+go run ./cmd/budgetto data backup --file ./backup/budgetto.db
+go run ./cmd/budgetto data restore --file ./backup/budgetto.db
+```
 
 ## Current Status
 
@@ -98,3 +110,6 @@ Implemented milestones:
 8. Monthly cap management (`set|show|history`) and `CAP_EXCEEDED` warning on `entry add`
 9. Reporting command group (`range|monthly|bimonthly|quarterly`) with grouping/filter options
 10. Balance command group (`show`) with `lifetime|range|both` views
+11. FX conversion (`--convert-to`) for report and balance with persisted snapshot rates
+12. Setup command group (`init|show`) for onboarding settings + optional opening balance/current month cap
+13. Data command group (`export|import|backup|restore`) for CSV/JSON portability and full SQLite snapshot lifecycle

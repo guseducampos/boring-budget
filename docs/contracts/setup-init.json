@@ -1,0 +1,48 @@
+{
+  "ok": true,
+  "data": {
+    "settings": {
+      "id": 1,
+      "default_currency_code": "USD",
+      "display_timezone": "UTC",
+      "orphan_count_threshold": 5,
+      "orphan_spending_threshold_bps": 500,
+      "onboarding_completed_at_utc": "2026-02-11T00:00:00Z",
+      "created_at_utc": "2026-02-11T00:00:00Z",
+      "updated_at_utc": "2026-02-11T00:00:00Z"
+    },
+    "opening_balance_entry": {
+      "id": 1,
+      "type": "income",
+      "amount_minor": 100000,
+      "currency_code": "USD",
+      "transaction_date_utc": "2026-02-11T00:00:00Z",
+      "note": "Opening balance",
+      "created_at_utc": "2026-02-11T00:00:00Z",
+      "updated_at_utc": "2026-02-11T00:00:00Z"
+    },
+    "opening_warnings": [],
+    "current_month_cap": {
+      "id": 1,
+      "month_key": "2026-02",
+      "amount_minor": 50000,
+      "currency_code": "USD",
+      "created_at_utc": "2026-02-11T00:00:00Z",
+      "updated_at_utc": "2026-02-11T00:00:00Z"
+    },
+    "current_month_cap_change": {
+      "id": 1,
+      "month_key": "2026-02",
+      "old_amount_minor": null,
+      "new_amount_minor": 50000,
+      "currency_code": "USD",
+      "changed_at_utc": "2026-02-11T00:00:00Z"
+    }
+  },
+  "warnings": [],
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "2026-02-11T00:00:00Z"
+  }
+}

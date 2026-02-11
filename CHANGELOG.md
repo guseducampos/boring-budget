@@ -72,6 +72,16 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/store/sqlite/fx_repo.go`
   - `internal/store/sqlite/queries/fx.sql`
   - `internal/store/sqlite/sqlc/fx.sql.go`
+- Setup/onboarding implementation:
+  - `internal/domain/settings.go`
+  - `internal/service/setup_service.go`
+  - `internal/store/sqlite/settings_repo.go`
+  - `internal/store/sqlite/queries/settings.sql`
+  - `internal/store/sqlite/sqlc/settings.sql.go`
+  - `internal/cli/setup.go`
+- Data portability implementation:
+  - `internal/service/portability_service.go`
+  - `internal/cli/data.go`
 - Reporting and balance tests:
   - `internal/domain/report_test.go`
   - `internal/service/report_service_test.go`
@@ -81,6 +91,8 @@ The format follows a lightweight Keep a Changelog style.
 - FX tests:
   - `internal/fx/converter_test.go`
   - `internal/store/sqlite/fx_repo_test.go`
+- Settings tests:
+  - `internal/store/sqlite/settings_repo_test.go`
 - SQLC entry query layer:
   - `internal/store/sqlite/queries/entry.sql`
   - `internal/store/sqlite/sqlc/entry.sql.go`
@@ -114,6 +126,8 @@ The format follows a lightweight Keep a Changelog style.
 - Report contracts updated to match implemented JSON payload shape (`categories`, cap status/history, warnings envelope).
 - SQLC config now includes `entry`, `cap`, and `fx` query sources (`sqlc.yaml`).
 - `report` and `balance` now support `--convert-to` with persisted FX rate snapshots.
+- SQLC config now includes `settings` query sources (`sqlc.yaml`).
+- Root CLI now registers `setup` and `data` command groups.
 
 ### Verified
 
@@ -127,6 +141,7 @@ The format follows a lightweight Keep a Changelog style.
 - End-to-end command checks pass for `report range|monthly|bimonthly|quarterly`.
 - End-to-end command checks pass for `balance show` (`lifetime|range|both` scopes).
 - `go test ./...` covers FX conversion logic and FX snapshot repository behavior.
+- End-to-end command checks pass for `setup init|show` and `data export|import|backup|restore`.
 
 ## Progress Notes
 
@@ -168,3 +183,8 @@ The format follows a lightweight Keep a Changelog style.
   - Historical rates used for past/current transactions; latest rate used for future-dated transactions
   - FX rate snapshots persisted in SQLite (`fx_rate_snapshots`) for reproducible conversions
   - `FX_ESTIMATE_USED` warning emitted when future-dated conversion uses latest available rate
+
+- Milestone completed: **Phase 6 Agent Hardening (Core)**
+  - Setup onboarding flow added (`setup init|show`) with default currency/timezone + optional opening balance/month cap
+  - Data portability commands added (`data export|import|backup|restore`) for CSV/JSON + full SQLite backup lifecycle
+  - Contract examples extended for setup/data command responses

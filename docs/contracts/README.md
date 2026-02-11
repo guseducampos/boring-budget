@@ -29,5 +29,7 @@ Rules:
 - `entry-add.json`: `entry add --output json` success contract with overspend warning.
 - `cap-set.json`: `cap set --output json` success contract with cap history change.
 - `report-monthly.json`: `report monthly --output json` success contract.
+- `setup-init.json`: `setup init --output json` onboarding success contract.
+- `data-export.json`: `data export --output json` success contract.
 - `errors.md`: stable error and warning code catalog.
 - `exit-codes.md`: stable CLI exit-code table.
