@@ -1,0 +1,268 @@
+package sqlite
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"strings"
+	"time"
+
+	"budgetto/internal/domain"
+	queries "budgetto/internal/store/sqlite/sqlc"
+)
+
+type EntryRepo struct {
+	db      *sql.DB
+	queries *queries.Queries
+}
+
+func NewEntryRepo(db *sql.DB) *EntryRepo {
+	return &EntryRepo{
+		db:      db,
+		queries: queries.New(db),
+	}
+}
+
+func (r *EntryRepo) Add(ctx context.Context, input domain.EntryAddInput) (domain.Entry, error) {
+	if r.db == nil {
+		return domain.Entry{}, fmt.Errorf("add entry: db is nil")
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.Entry{}, fmt.Errorf("add entry begin tx: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	qtx := r.queries.WithTx(tx)
+
+	categoryID := sql.NullInt64{}
+	if input.CategoryID != nil {
+		isActive, err := qtx.ExistsActiveCategoryByID(ctx, *input.CategoryID)
+		if err != nil {
+			return domain.Entry{}, fmt.Errorf("add entry check category: %w", err)
+		}
+		if !isTruthy(isActive) {
+			return domain.Entry{}, domain.ErrCategoryNotFound
+		}
+		categoryID = sql.NullInt64{Int64: *input.CategoryID, Valid: true}
+	}
+
+	note := sql.NullString{}
+	if strings.TrimSpace(input.Note) != "" {
+		note = sql.NullString{String: input.Note, Valid: true}
+	}
+
+	result, err := qtx.CreateEntry(ctx, queries.CreateEntryParams{
+		Type:               input.Type,
+		AmountMinor:        input.AmountMinor,
+		CurrencyCode:       input.CurrencyCode,
+		TransactionDateUtc: input.TransactionDateUTC,
+		CategoryID:         categoryID,
+		Note:               note,
+	})
+	if err != nil {
+		return domain.Entry{}, fmt.Errorf("add entry insert: %w", err)
+	}
+
+	entryID, err := result.LastInsertId()
+	if err != nil {
+		return domain.Entry{}, fmt.Errorf("add entry read id: %w", err)
+	}
+
+	for _, labelID := range input.LabelIDs {
+		isActive, err := qtx.ExistsActiveLabelByID(ctx, labelID)
+		if err != nil {
+			return domain.Entry{}, fmt.Errorf("add entry check label %d: %w", labelID, err)
+		}
+		if !isTruthy(isActive) {
+			return domain.Entry{}, domain.ErrLabelNotFound
+		}
+
+		if _, err := qtx.AddEntryLabelLink(ctx, queries.AddEntryLabelLinkParams{
+			TransactionID: entryID,
+			LabelID:       labelID,
+		}); err != nil {
+			return domain.Entry{}, fmt.Errorf("add entry label link %d: %w", labelID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return domain.Entry{}, fmt.Errorf("add entry commit: %w", err)
+	}
+
+	entry, err := r.getActiveByID(ctx, entryID)
+	if err != nil {
+		return domain.Entry{}, err
+	}
+	return entry, nil
+}
+
+func (r *EntryRepo) List(ctx context.Context, filter domain.EntryListFilter) ([]domain.Entry, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("list entries: db is nil")
+	}
+
+	params := queries.ListActiveEntriesParams{
+		EntryType:   nullableString(filter.Type),
+		CategoryID:  nullableInt64(filter.CategoryID),
+		DateFromUtc: nullableString(filter.DateFromUTC),
+		DateToUtc:   nullableString(filter.DateToUTC),
+	}
+	rows, err := r.queries.ListActiveEntries(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("list entries: %w", err)
+	}
+
+	entries := make([]domain.Entry, 0, len(rows))
+	for _, row := range rows {
+		labelRows, err := r.queries.ListActiveEntryLabelIDs(ctx, row.ID)
+		if err != nil {
+			return nil, fmt.Errorf("list labels for entry %d: %w", row.ID, err)
+		}
+
+		labelIDs := make([]int64, 0, len(labelRows))
+		for _, labelRow := range labelRows {
+			labelIDs = append(labelIDs, labelRow.LabelID)
+		}
+
+		entries = append(entries, mapSQLCTransactionToDomainEntry(row, labelIDs))
+	}
+
+	return entries, nil
+}
+
+func (r *EntryRepo) Delete(ctx context.Context, id int64) (domain.EntryDeleteResult, error) {
+	if r.db == nil {
+		return domain.EntryDeleteResult{}, fmt.Errorf("delete entry: db is nil")
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.EntryDeleteResult{}, fmt.Errorf("delete entry begin tx: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	deletedAtUTC := time.Now().UTC().Format(time.RFC3339Nano)
+	qtx := r.queries.WithTx(tx)
+
+	deleteResult, err := qtx.SoftDeleteEntry(ctx, queries.SoftDeleteEntryParams{
+		DeletedAtUtc: sql.NullString{String: deletedAtUTC, Valid: true},
+		UpdatedAtUtc: deletedAtUTC,
+		ID:           id,
+	})
+	if err != nil {
+		return domain.EntryDeleteResult{}, fmt.Errorf("delete entry mark deleted: %w", err)
+	}
+
+	rowsAffected, err := deleteResult.RowsAffected()
+	if err != nil {
+		return domain.EntryDeleteResult{}, fmt.Errorf("delete entry rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return domain.EntryDeleteResult{}, domain.ErrEntryNotFound
+	}
+
+	linksResult, err := qtx.SoftDeleteEntryLabelLinks(ctx, queries.SoftDeleteEntryLabelLinksParams{
+		DeletedAtUtc:  sql.NullString{String: deletedAtUTC, Valid: true},
+		TransactionID: id,
+	})
+	if err != nil {
+		return domain.EntryDeleteResult{}, fmt.Errorf("delete entry label links: %w", err)
+	}
+
+	detachedLabels, err := linksResult.RowsAffected()
+	if err != nil {
+		return domain.EntryDeleteResult{}, fmt.Errorf("delete entry label links rows affected: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return domain.EntryDeleteResult{}, fmt.Errorf("delete entry commit: %w", err)
+	}
+
+	return domain.EntryDeleteResult{
+		EntryID:        id,
+		DeletedAtUTC:   deletedAtUTC,
+		DetachedLabels: detachedLabels,
+	}, nil
+}
+
+func (r *EntryRepo) getActiveByID(ctx context.Context, id int64) (domain.Entry, error) {
+	row, err := r.queries.GetActiveEntryByID(ctx, id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return domain.Entry{}, domain.ErrEntryNotFound
+		}
+		return domain.Entry{}, fmt.Errorf("get active entry by id: %w", err)
+	}
+
+	labelRows, err := r.queries.ListActiveEntryLabelIDs(ctx, id)
+	if err != nil {
+		return domain.Entry{}, fmt.Errorf("list labels for entry %d: %w", id, err)
+	}
+
+	labelIDs := make([]int64, 0, len(labelRows))
+	for _, labelRow := range labelRows {
+		labelIDs = append(labelIDs, labelRow.LabelID)
+	}
+
+	return mapSQLCTransactionToDomainEntry(row, labelIDs), nil
+}
+
+func mapSQLCTransactionToDomainEntry(row queries.Transaction, labelIDs []int64) domain.Entry {
+	var categoryID *int64
+	if row.CategoryID.Valid {
+		categoryID = &row.CategoryID.Int64
+	}
+
+	note := ""
+	if row.Note.Valid {
+		note = row.Note.String
+	}
+
+	return domain.Entry{
+		ID:                 row.ID,
+		Type:               row.Type,
+		AmountMinor:        row.AmountMinor,
+		CurrencyCode:       row.CurrencyCode,
+		TransactionDateUTC: row.TransactionDateUtc,
+		CategoryID:         categoryID,
+		LabelIDs:           labelIDs,
+		Note:               note,
+		CreatedAtUTC:       row.CreatedAtUtc,
+		UpdatedAtUTC:       row.UpdatedAtUtc,
+	}
+}
+
+func nullableString(value string) sql.NullString {
+	if strings.TrimSpace(value) == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: value, Valid: true}
+}
+
+func nullableInt64(value *int64) sql.NullInt64 {
+	if value == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: *value, Valid: true}
+}
+
+func isTruthy(value interface{}) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case int64:
+		return v != 0
+	case int32:
+		return v != 0
+	case int:
+		return v != 0
+	default:
+		return false
+	}
+}

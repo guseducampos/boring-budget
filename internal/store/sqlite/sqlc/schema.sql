@@ -62,6 +62,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_transaction_labels_unique_active
 CREATE INDEX IF NOT EXISTS idx_transaction_labels_label_active
     ON transaction_labels (label_id, deleted_at_utc);
 
+CREATE INDEX IF NOT EXISTS idx_transaction_labels_transaction_active
+    ON transaction_labels (transaction_id, deleted_at_utc);
+
 CREATE TABLE IF NOT EXISTS monthly_caps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     month_key TEXT NOT NULL,
