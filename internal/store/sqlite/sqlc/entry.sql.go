@@ -231,3 +231,76 @@ type SoftDeleteEntryLabelLinksParams struct {
 func (q *Queries) SoftDeleteEntryLabelLinks(ctx context.Context, arg SoftDeleteEntryLabelLinksParams) (sql.Result, error) {
 	return q.db.ExecContext(ctx, softDeleteEntryLabelLinks, arg.DeletedAtUtc, arg.TransactionID)
 }
+
+const updateEntryByID = `-- name: UpdateEntryByID :execresult
+UPDATE transactions
+SET type = CASE
+    WHEN ?1 = 1 THEN ?2
+    ELSE type
+END,
+    amount_minor = CASE
+    WHEN ?3 = 1 THEN ?4
+    ELSE amount_minor
+END,
+    currency_code = CASE
+    WHEN ?5 = 1 THEN ?6
+    ELSE currency_code
+END,
+    transaction_date_utc = CASE
+    WHEN ?7 = 1 THEN ?8
+    ELSE transaction_date_utc
+END,
+    category_id = CASE
+    WHEN ?9 = 1 THEN NULL
+    WHEN ?10 = 1 THEN ?11
+    ELSE category_id
+END,
+    note = CASE
+    WHEN ?12 = 1 THEN NULL
+    WHEN ?13 = 1 THEN ?14
+    ELSE note
+END,
+    updated_at_utc = ?15
+WHERE id = ?16
+  AND deleted_at_utc IS NULL
+`
+
+type UpdateEntryByIDParams struct {
+	SetType               interface{}    `json:"set_type"`
+	Type                  string         `json:"type"`
+	SetAmountMinor        interface{}    `json:"set_amount_minor"`
+	AmountMinor           int64          `json:"amount_minor"`
+	SetCurrencyCode       interface{}    `json:"set_currency_code"`
+	CurrencyCode          string         `json:"currency_code"`
+	SetTransactionDateUtc interface{}    `json:"set_transaction_date_utc"`
+	TransactionDateUtc    string         `json:"transaction_date_utc"`
+	ClearCategory         interface{}    `json:"clear_category"`
+	SetCategoryID         interface{}    `json:"set_category_id"`
+	CategoryID            sql.NullInt64  `json:"category_id"`
+	ClearNote             interface{}    `json:"clear_note"`
+	SetNote               interface{}    `json:"set_note"`
+	Note                  sql.NullString `json:"note"`
+	UpdatedAtUtc          string         `json:"updated_at_utc"`
+	ID                    int64          `json:"id"`
+}
+
+func (q *Queries) UpdateEntryByID(ctx context.Context, arg UpdateEntryByIDParams) (sql.Result, error) {
+	return q.db.ExecContext(ctx, updateEntryByID,
+		arg.SetType,
+		arg.Type,
+		arg.SetAmountMinor,
+		arg.AmountMinor,
+		arg.SetCurrencyCode,
+		arg.CurrencyCode,
+		arg.SetTransactionDateUtc,
+		arg.TransactionDateUtc,
+		arg.ClearCategory,
+		arg.SetCategoryID,
+		arg.CategoryID,
+		arg.ClearNote,
+		arg.SetNote,
+		arg.Note,
+		arg.UpdatedAtUtc,
+		arg.ID,
+	)
+}

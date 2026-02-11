@@ -100,6 +100,157 @@ func (r *EntryRepo) Add(ctx context.Context, input domain.EntryAddInput) (domain
 	return entry, nil
 }
 
+func (r *EntryRepo) Update(ctx context.Context, input domain.EntryUpdateInput) (domain.Entry, error) {
+	if r.db == nil {
+		return domain.Entry{}, fmt.Errorf("update entry: db is nil")
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.Entry{}, fmt.Errorf("update entry begin tx: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	qtx := r.queries.WithTx(tx)
+
+	current, err := qtx.GetActiveEntryByID(ctx, input.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return domain.Entry{}, domain.ErrEntryNotFound
+		}
+		return domain.Entry{}, fmt.Errorf("update entry load current: %w", err)
+	}
+
+	categoryID := current.CategoryID
+	clearCategory := int64(0)
+	setCategoryID := int64(0)
+	if input.SetCategory {
+		if input.CategoryID == nil {
+			clearCategory = 1
+			categoryID = sql.NullInt64{}
+		} else {
+			isActive, err := qtx.ExistsActiveCategoryByID(ctx, *input.CategoryID)
+			if err != nil {
+				return domain.Entry{}, fmt.Errorf("update entry check category: %w", err)
+			}
+			if !isTruthy(isActive) {
+				return domain.Entry{}, domain.ErrCategoryNotFound
+			}
+			setCategoryID = 1
+			categoryID = sql.NullInt64{Int64: *input.CategoryID, Valid: true}
+		}
+	}
+
+	setType := int64(0)
+	entryType := current.Type
+	if input.Type != nil {
+		setType = 1
+		entryType = *input.Type
+	}
+
+	setAmountMinor := int64(0)
+	amountMinor := current.AmountMinor
+	if input.AmountMinor != nil {
+		setAmountMinor = 1
+		amountMinor = *input.AmountMinor
+	}
+
+	setCurrencyCode := int64(0)
+	currencyCode := current.CurrencyCode
+	if input.CurrencyCode != nil {
+		setCurrencyCode = 1
+		currencyCode = *input.CurrencyCode
+	}
+
+	setTransactionDateUTC := int64(0)
+	transactionDateUTC := current.TransactionDateUtc
+	if input.TransactionDateUTC != nil {
+		setTransactionDateUTC = 1
+		transactionDateUTC = *input.TransactionDateUTC
+	}
+
+	clearNote := int64(0)
+	setNote := int64(0)
+	note := current.Note
+	if input.SetNote {
+		if input.Note == nil {
+			clearNote = 1
+			note = sql.NullString{}
+		} else {
+			setNote = 1
+			note = sql.NullString{String: strings.TrimSpace(*input.Note), Valid: true}
+		}
+	}
+
+	updatedAtUTC := time.Now().UTC().Format(time.RFC3339Nano)
+	updateResult, err := qtx.UpdateEntryByID(ctx, queries.UpdateEntryByIDParams{
+		SetType:               setType,
+		Type:                  entryType,
+		SetAmountMinor:        setAmountMinor,
+		AmountMinor:           amountMinor,
+		SetCurrencyCode:       setCurrencyCode,
+		CurrencyCode:          currencyCode,
+		SetTransactionDateUtc: setTransactionDateUTC,
+		TransactionDateUtc:    transactionDateUTC,
+		ClearCategory:         clearCategory,
+		SetCategoryID:         setCategoryID,
+		CategoryID:            categoryID,
+		ClearNote:             clearNote,
+		SetNote:               setNote,
+		Note:                  note,
+		UpdatedAtUtc:          updatedAtUTC,
+		ID:                    input.ID,
+	})
+	if err != nil {
+		return domain.Entry{}, fmt.Errorf("update entry run update: %w", err)
+	}
+
+	rowsAffected, err := updateResult.RowsAffected()
+	if err != nil {
+		return domain.Entry{}, fmt.Errorf("update entry rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return domain.Entry{}, domain.ErrEntryNotFound
+	}
+
+	if input.SetLabelIDs {
+		for _, labelID := range input.LabelIDs {
+			isActive, err := qtx.ExistsActiveLabelByID(ctx, labelID)
+			if err != nil {
+				return domain.Entry{}, fmt.Errorf("update entry check label %d: %w", labelID, err)
+			}
+			if !isTruthy(isActive) {
+				return domain.Entry{}, domain.ErrLabelNotFound
+			}
+		}
+
+		_, err := qtx.SoftDeleteEntryLabelLinks(ctx, queries.SoftDeleteEntryLabelLinksParams{
+			DeletedAtUtc:  sql.NullString{String: updatedAtUTC, Valid: true},
+			TransactionID: input.ID,
+		})
+		if err != nil {
+			return domain.Entry{}, fmt.Errorf("update entry clear label links: %w", err)
+		}
+
+		for _, labelID := range input.LabelIDs {
+			if _, err := qtx.AddEntryLabelLink(ctx, queries.AddEntryLabelLinkParams{
+				TransactionID: input.ID,
+				LabelID:       labelID,
+			}); err != nil {
+				return domain.Entry{}, fmt.Errorf("update entry label link %d: %w", labelID, err)
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return domain.Entry{}, fmt.Errorf("update entry commit: %w", err)
+	}
+
+	return r.getActiveByID(ctx, input.ID)
+}
+
 func (r *EntryRepo) List(ctx context.Context, filter domain.EntryListFilter) ([]domain.Entry, error) {
 	if r.db == nil {
 		return nil, fmt.Errorf("list entries: db is nil")

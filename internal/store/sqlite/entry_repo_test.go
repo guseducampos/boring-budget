@@ -203,6 +203,122 @@ func TestEntryRepoDeleteNotFound(t *testing.T) {
 	}
 }
 
+func TestEntryRepoUpdateWithCategoryLabelsAndNote(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db := openEntryTestDB(t)
+	defer db.Close()
+
+	repo := NewEntryRepo(db)
+
+	categoryA := insertCategoryForEntryTest(t, ctx, db, "Category A")
+	categoryB := insertCategoryForEntryTest(t, ctx, db, "Category B")
+	labelA := insertLabelForEntryTest(t, ctx, db, "A")
+	labelB := insertLabelForEntryTest(t, ctx, db, "B")
+
+	entry, err := repo.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        1000,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-01T00:00:00Z",
+		CategoryID:         &categoryA,
+		LabelIDs:           []int64{labelA},
+		Note:               "old note",
+	})
+	if err != nil {
+		t.Fatalf("add entry: %v", err)
+	}
+
+	newType := domain.EntryTypeIncome
+	newAmount := int64(3200)
+	newCurrency := "EUR"
+	newDate := "2026-02-10T00:00:00Z"
+	newNote := "updated note"
+	updated, err := repo.Update(ctx, domain.EntryUpdateInput{
+		ID:                 entry.ID,
+		Type:               &newType,
+		AmountMinor:        &newAmount,
+		CurrencyCode:       &newCurrency,
+		TransactionDateUTC: &newDate,
+		SetCategory:        true,
+		CategoryID:         &categoryB,
+		SetLabelIDs:        true,
+		LabelIDs:           []int64{labelB},
+		SetNote:            true,
+		Note:               &newNote,
+	})
+	if err != nil {
+		t.Fatalf("update entry: %v", err)
+	}
+
+	if updated.Type != domain.EntryTypeIncome {
+		t.Fatalf("expected income type after update, got %q", updated.Type)
+	}
+	if updated.AmountMinor != 3200 || updated.CurrencyCode != "EUR" || updated.TransactionDateUTC != "2026-02-10T00:00:00Z" {
+		t.Fatalf("unexpected core fields after update: %+v", updated)
+	}
+	if updated.CategoryID == nil || *updated.CategoryID != categoryB {
+		t.Fatalf("expected category %d after update, got %+v", categoryB, updated.CategoryID)
+	}
+	if !reflect.DeepEqual(updated.LabelIDs, []int64{labelB}) {
+		t.Fatalf("expected labels [%d], got %v", labelB, updated.LabelIDs)
+	}
+	if updated.Note != "updated note" {
+		t.Fatalf("expected updated note, got %q", updated.Note)
+	}
+}
+
+func TestEntryRepoUpdateClearCategoryLabelsAndNote(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db := openEntryTestDB(t)
+	defer db.Close()
+
+	repo := NewEntryRepo(db)
+
+	categoryID := insertCategoryForEntryTest(t, ctx, db, "Category")
+	labelA := insertLabelForEntryTest(t, ctx, db, "A")
+	labelB := insertLabelForEntryTest(t, ctx, db, "B")
+
+	entry, err := repo.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        1000,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-01T00:00:00Z",
+		CategoryID:         &categoryID,
+		LabelIDs:           []int64{labelA, labelB},
+		Note:               "old note",
+	})
+	if err != nil {
+		t.Fatalf("add entry: %v", err)
+	}
+
+	updated, err := repo.Update(ctx, domain.EntryUpdateInput{
+		ID:          entry.ID,
+		SetCategory: true,
+		CategoryID:  nil,
+		SetLabelIDs: true,
+		LabelIDs:    []int64{},
+		SetNote:     true,
+		Note:        nil,
+	})
+	if err != nil {
+		t.Fatalf("update clear fields: %v", err)
+	}
+
+	if updated.CategoryID != nil {
+		t.Fatalf("expected orphaned category, got %v", updated.CategoryID)
+	}
+	if len(updated.LabelIDs) != 0 {
+		t.Fatalf("expected no labels after clear, got %v", updated.LabelIDs)
+	}
+	if updated.Note != "" {
+		t.Fatalf("expected empty note after clear, got %q", updated.Note)
+	}
+}
+
 func openEntryTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 

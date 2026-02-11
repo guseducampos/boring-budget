@@ -28,6 +28,38 @@ UPDATE transactions
 SET deleted_at_utc = ?, updated_at_utc = ?
 WHERE id = ? AND deleted_at_utc IS NULL;
 
+-- name: UpdateEntryByID :execresult
+UPDATE transactions
+SET type = CASE
+    WHEN sqlc.arg(set_type) = 1 THEN sqlc.arg(type)
+    ELSE type
+END,
+    amount_minor = CASE
+    WHEN sqlc.arg(set_amount_minor) = 1 THEN sqlc.arg(amount_minor)
+    ELSE amount_minor
+END,
+    currency_code = CASE
+    WHEN sqlc.arg(set_currency_code) = 1 THEN sqlc.arg(currency_code)
+    ELSE currency_code
+END,
+    transaction_date_utc = CASE
+    WHEN sqlc.arg(set_transaction_date_utc) = 1 THEN sqlc.arg(transaction_date_utc)
+    ELSE transaction_date_utc
+END,
+    category_id = CASE
+    WHEN sqlc.arg(clear_category) = 1 THEN NULL
+    WHEN sqlc.arg(set_category_id) = 1 THEN sqlc.narg(category_id)
+    ELSE category_id
+END,
+    note = CASE
+    WHEN sqlc.arg(clear_note) = 1 THEN NULL
+    WHEN sqlc.arg(set_note) = 1 THEN sqlc.narg(note)
+    ELSE note
+END,
+    updated_at_utc = sqlc.arg(updated_at_utc)
+WHERE id = sqlc.arg(id)
+  AND deleted_at_utc IS NULL;
+
 -- name: AddEntryLabelLink :execresult
 INSERT INTO transaction_labels (transaction_id, label_id)
 VALUES (?, ?);

@@ -11,12 +11,17 @@ import (
 
 type entryRepoStub struct {
 	addFn    func(ctx context.Context, input domain.EntryAddInput) (domain.Entry, error)
+	updateFn func(ctx context.Context, input domain.EntryUpdateInput) (domain.Entry, error)
 	listFn   func(ctx context.Context, filter domain.EntryListFilter) ([]domain.Entry, error)
 	deleteFn func(ctx context.Context, id int64) (domain.EntryDeleteResult, error)
 }
 
 func (s *entryRepoStub) Add(ctx context.Context, input domain.EntryAddInput) (domain.Entry, error) {
 	return s.addFn(ctx, input)
+}
+
+func (s *entryRepoStub) Update(ctx context.Context, input domain.EntryUpdateInput) (domain.Entry, error) {
+	return s.updateFn(ctx, input)
 }
 
 func (s *entryRepoStub) List(ctx context.Context, filter domain.EntryListFilter) ([]domain.Entry, error) {
@@ -28,8 +33,8 @@ func (s *entryRepoStub) Delete(ctx context.Context, id int64) (domain.EntryDelet
 }
 
 type entryCapLookupStub struct {
-	getByMonthFn     func(ctx context.Context, monthKey string) (domain.MonthlyCap, error)
-	expenseTotalFn   func(ctx context.Context, monthKey, currencyCode string) (int64, error)
+	getByMonthFn   func(ctx context.Context, monthKey string) (domain.MonthlyCap, error)
+	expenseTotalFn func(ctx context.Context, monthKey, currencyCode string) (int64, error)
 }
 
 func (s *entryCapLookupStub) GetByMonth(ctx context.Context, monthKey string) (domain.MonthlyCap, error) {
@@ -77,6 +82,9 @@ func TestEntryServiceAddNormalizesInput(t *testing.T) {
 			}
 			return domain.Entry{ID: 1, Type: input.Type, LabelIDs: input.LabelIDs}, nil
 		},
+		updateFn: func(context.Context, domain.EntryUpdateInput) (domain.Entry, error) {
+			return domain.Entry{}, nil
+		},
 		listFn:   func(context.Context, domain.EntryListFilter) ([]domain.Entry, error) { return nil, nil },
 		deleteFn: func(context.Context, int64) (domain.EntryDeleteResult, error) { return domain.EntryDeleteResult{}, nil },
 	})
@@ -110,6 +118,9 @@ func TestEntryServiceListNormalizesAndAppliesAnyLabelMode(t *testing.T) {
 
 	svc, err := NewEntryService(&entryRepoStub{
 		addFn: func(context.Context, domain.EntryAddInput) (domain.Entry, error) { return domain.Entry{}, nil },
+		updateFn: func(context.Context, domain.EntryUpdateInput) (domain.Entry, error) {
+			return domain.Entry{}, nil
+		},
 		listFn: func(ctx context.Context, filter domain.EntryListFilter) ([]domain.Entry, error) {
 			capturedFilter = filter
 			return []domain.Entry{
@@ -168,7 +179,10 @@ func TestEntryServiceListAppliesAllAndNoneModes(t *testing.T) {
 	}
 
 	svc, err := NewEntryService(&entryRepoStub{
-		addFn:  func(context.Context, domain.EntryAddInput) (domain.Entry, error) { return domain.Entry{}, nil },
+		addFn: func(context.Context, domain.EntryAddInput) (domain.Entry, error) { return domain.Entry{}, nil },
+		updateFn: func(context.Context, domain.EntryUpdateInput) (domain.Entry, error) {
+			return domain.Entry{}, nil
+		},
 		listFn: func(context.Context, domain.EntryListFilter) ([]domain.Entry, error) { return entries, nil },
 		deleteFn: func(context.Context, int64) (domain.EntryDeleteResult, error) {
 			return domain.EntryDeleteResult{}, nil
@@ -206,6 +220,7 @@ func TestEntryServiceDeleteRejectsInvalidID(t *testing.T) {
 
 	svc, err := NewEntryService(&entryRepoStub{
 		addFn:    func(context.Context, domain.EntryAddInput) (domain.Entry, error) { return domain.Entry{}, nil },
+		updateFn: func(context.Context, domain.EntryUpdateInput) (domain.Entry, error) { return domain.Entry{}, nil },
 		listFn:   func(context.Context, domain.EntryListFilter) ([]domain.Entry, error) { return nil, nil },
 		deleteFn: func(context.Context, int64) (domain.EntryDeleteResult, error) { return domain.EntryDeleteResult{}, nil },
 	})
@@ -233,6 +248,9 @@ func TestEntryServiceAddWithWarningsReturnsCapExceededWarning(t *testing.T) {
 					CurrencyCode:       input.CurrencyCode,
 					TransactionDateUTC: input.TransactionDateUTC,
 				}, nil
+			},
+			updateFn: func(context.Context, domain.EntryUpdateInput) (domain.Entry, error) {
+				return domain.Entry{}, nil
 			},
 			listFn:   func(context.Context, domain.EntryListFilter) ([]domain.Entry, error) { return nil, nil },
 			deleteFn: func(context.Context, int64) (domain.EntryDeleteResult, error) { return domain.EntryDeleteResult{}, nil },
@@ -317,6 +335,9 @@ func TestEntryServiceAddWithWarningsSkipsDifferentCapCurrency(t *testing.T) {
 					TransactionDateUTC: input.TransactionDateUTC,
 				}, nil
 			},
+			updateFn: func(context.Context, domain.EntryUpdateInput) (domain.Entry, error) {
+				return domain.Entry{}, nil
+			},
 			listFn:   func(context.Context, domain.EntryListFilter) ([]domain.Entry, error) { return nil, nil },
 			deleteFn: func(context.Context, int64) (domain.EntryDeleteResult, error) { return domain.EntryDeleteResult{}, nil },
 		},
@@ -346,5 +367,145 @@ func TestEntryServiceAddWithWarningsSkipsDifferentCapCurrency(t *testing.T) {
 
 	if len(addResult.Warnings) != 0 {
 		t.Fatalf("expected no warnings for different cap currency, got %+v", addResult.Warnings)
+	}
+}
+
+func TestEntryServiceUpdateNormalizesInput(t *testing.T) {
+	t.Parallel()
+
+	categoryID := int64(3)
+	note := "  updated note  "
+	entryType := " income "
+	currency := " eur "
+	dateValue := "2026-02-12"
+	amountMinor := int64(900)
+
+	svc, err := NewEntryService(&entryRepoStub{
+		addFn: func(context.Context, domain.EntryAddInput) (domain.Entry, error) { return domain.Entry{}, nil },
+		updateFn: func(ctx context.Context, input domain.EntryUpdateInput) (domain.Entry, error) {
+			if input.ID != 7 {
+				t.Fatalf("expected id 7, got %d", input.ID)
+			}
+			if input.Type == nil || *input.Type != domain.EntryTypeIncome {
+				t.Fatalf("expected normalized type income, got %v", input.Type)
+			}
+			if input.AmountMinor == nil || *input.AmountMinor != 900 {
+				t.Fatalf("expected amount 900, got %v", input.AmountMinor)
+			}
+			if input.CurrencyCode == nil || *input.CurrencyCode != "EUR" {
+				t.Fatalf("expected currency EUR, got %v", input.CurrencyCode)
+			}
+			if input.TransactionDateUTC == nil || *input.TransactionDateUTC != "2026-02-12T00:00:00Z" {
+				t.Fatalf("expected normalized date, got %v", input.TransactionDateUTC)
+			}
+			if !input.SetCategory || input.CategoryID == nil || *input.CategoryID != categoryID {
+				t.Fatalf("expected category set to %d, got %+v", categoryID, input)
+			}
+			if !input.SetLabelIDs || !reflect.DeepEqual(input.LabelIDs, []int64{2, 5}) {
+				t.Fatalf("expected normalized label ids [2 5], got %v", input.LabelIDs)
+			}
+			if !input.SetNote || input.Note == nil || *input.Note != "updated note" {
+				t.Fatalf("expected trimmed note, got %+v", input.Note)
+			}
+
+			return domain.Entry{
+				ID:                 input.ID,
+				Type:               *input.Type,
+				AmountMinor:        *input.AmountMinor,
+				CurrencyCode:       *input.CurrencyCode,
+				TransactionDateUTC: *input.TransactionDateUTC,
+				CategoryID:         input.CategoryID,
+				LabelIDs:           input.LabelIDs,
+				Note:               *input.Note,
+			}, nil
+		},
+		listFn:   func(context.Context, domain.EntryListFilter) ([]domain.Entry, error) { return nil, nil },
+		deleteFn: func(context.Context, int64) (domain.EntryDeleteResult, error) { return domain.EntryDeleteResult{}, nil },
+	})
+	if err != nil {
+		t.Fatalf("new entry service: %v", err)
+	}
+
+	updated, err := svc.Update(context.Background(), domain.EntryUpdateInput{
+		ID:                 7,
+		Type:               &entryType,
+		AmountMinor:        &amountMinor,
+		CurrencyCode:       &currency,
+		TransactionDateUTC: &dateValue,
+		SetCategory:        true,
+		CategoryID:         &categoryID,
+		SetLabelIDs:        true,
+		LabelIDs:           []int64{5, 2, 5},
+		SetNote:            true,
+		Note:               &note,
+	})
+	if err != nil {
+		t.Fatalf("update entry: %v", err)
+	}
+	if updated.ID != 7 {
+		t.Fatalf("expected updated id 7, got %d", updated.ID)
+	}
+}
+
+func TestEntryServiceUpdateRejectsNoFields(t *testing.T) {
+	t.Parallel()
+
+	svc, err := NewEntryService(&entryRepoStub{
+		addFn:    func(context.Context, domain.EntryAddInput) (domain.Entry, error) { return domain.Entry{}, nil },
+		updateFn: func(context.Context, domain.EntryUpdateInput) (domain.Entry, error) { return domain.Entry{}, nil },
+		listFn:   func(context.Context, domain.EntryListFilter) ([]domain.Entry, error) { return nil, nil },
+		deleteFn: func(context.Context, int64) (domain.EntryDeleteResult, error) { return domain.EntryDeleteResult{}, nil },
+	})
+	if err != nil {
+		t.Fatalf("new entry service: %v", err)
+	}
+
+	_, err = svc.Update(context.Background(), domain.EntryUpdateInput{ID: 10})
+	if !errors.Is(err, domain.ErrNoEntryUpdateFields) {
+		t.Fatalf("expected ErrNoEntryUpdateFields, got %v", err)
+	}
+}
+
+func TestEntryServiceUpdateWithWarningsReturnsCapExceededWarning(t *testing.T) {
+	t.Parallel()
+
+	amountMinor := int64(4000)
+	svc, err := NewEntryService(
+		&entryRepoStub{
+			addFn: func(context.Context, domain.EntryAddInput) (domain.Entry, error) { return domain.Entry{}, nil },
+			updateFn: func(ctx context.Context, input domain.EntryUpdateInput) (domain.Entry, error) {
+				return domain.Entry{
+					ID:                 input.ID,
+					Type:               domain.EntryTypeExpense,
+					AmountMinor:        amountMinor,
+					CurrencyCode:       "USD",
+					TransactionDateUTC: "2026-02-20T00:00:00Z",
+				}, nil
+			},
+			listFn:   func(context.Context, domain.EntryListFilter) ([]domain.Entry, error) { return nil, nil },
+			deleteFn: func(context.Context, int64) (domain.EntryDeleteResult, error) { return domain.EntryDeleteResult{}, nil },
+		},
+		WithEntryCapLookup(&entryCapLookupStub{
+			getByMonthFn: func(ctx context.Context, monthKey string) (domain.MonthlyCap, error) {
+				return domain.MonthlyCap{MonthKey: "2026-02", AmountMinor: 3000, CurrencyCode: "USD"}, nil
+			},
+			expenseTotalFn: func(ctx context.Context, monthKey, currencyCode string) (int64, error) {
+				return 4500, nil
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("new entry service: %v", err)
+	}
+
+	result, err := svc.UpdateWithWarnings(context.Background(), domain.EntryUpdateInput{
+		ID:          22,
+		AmountMinor: &amountMinor,
+	})
+	if err != nil {
+		t.Fatalf("update with warnings: %v", err)
+	}
+	if len(result.Warnings) != 1 || result.Warnings[0].Code != domain.WarningCodeCapExceeded {
+		t.Fatalf("expected CAP_EXCEEDED warning, got %+v", result.Warnings)
 	}
 }

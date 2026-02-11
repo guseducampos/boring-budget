@@ -11,6 +11,7 @@ import (
 
 type EntryRepository interface {
 	Add(ctx context.Context, input domain.EntryAddInput) (domain.Entry, error)
+	Update(ctx context.Context, input domain.EntryUpdateInput) (domain.Entry, error)
 	List(ctx context.Context, filter domain.EntryListFilter) ([]domain.Entry, error)
 	Delete(ctx context.Context, id int64) (domain.EntryDeleteResult, error)
 }
@@ -208,6 +209,147 @@ func (s *EntryService) List(ctx context.Context, filter domain.EntryListFilter) 
 	}
 
 	return filterEntriesByLabelMode(entries, normalizedLabelIDs, normalizedLabelMode), nil
+}
+
+func (s *EntryService) Update(ctx context.Context, input domain.EntryUpdateInput) (domain.Entry, error) {
+	result, err := s.UpdateWithWarnings(ctx, input)
+	if err != nil {
+		return domain.Entry{}, err
+	}
+	return result.Entry, nil
+}
+
+func (s *EntryService) UpdateWithWarnings(ctx context.Context, input domain.EntryUpdateInput) (EntryAddResult, error) {
+	if err := domain.ValidateEntryID(input.ID); err != nil {
+		return EntryAddResult{}, err
+	}
+	if !domain.HasEntryUpdateChanges(input) {
+		return EntryAddResult{}, domain.ErrNoEntryUpdateFields
+	}
+
+	normalized := domain.EntryUpdateInput{ID: input.ID}
+
+	if input.Type != nil {
+		normalizedType, err := domain.NormalizeEntryType(*input.Type)
+		if err != nil {
+			return EntryAddResult{}, err
+		}
+		normalized.Type = &normalizedType
+	}
+
+	if input.AmountMinor != nil {
+		if err := domain.ValidateAmountMinor(*input.AmountMinor); err != nil {
+			return EntryAddResult{}, err
+		}
+		value := *input.AmountMinor
+		normalized.AmountMinor = &value
+	}
+
+	if input.CurrencyCode != nil {
+		normalizedCurrency, err := domain.NormalizeCurrencyCode(*input.CurrencyCode)
+		if err != nil {
+			return EntryAddResult{}, err
+		}
+		normalized.CurrencyCode = &normalizedCurrency
+	}
+
+	if input.TransactionDateUTC != nil {
+		normalizedDate, err := domain.NormalizeTransactionDateUTC(*input.TransactionDateUTC)
+		if err != nil {
+			return EntryAddResult{}, err
+		}
+		normalized.TransactionDateUTC = &normalizedDate
+	}
+
+	if input.SetCategory {
+		normalized.SetCategory = true
+		if input.CategoryID != nil {
+			if err := domain.ValidateOptionalCategoryID(input.CategoryID); err != nil {
+				return EntryAddResult{}, err
+			}
+			categoryID := *input.CategoryID
+			normalized.CategoryID = &categoryID
+		}
+	}
+
+	if input.SetLabelIDs {
+		normalizedLabelIDs, err := domain.NormalizeLabelIDs(input.LabelIDs)
+		if err != nil {
+			return EntryAddResult{}, err
+		}
+		normalized.SetLabelIDs = true
+		normalized.LabelIDs = normalizedLabelIDs
+	}
+
+	if input.SetNote {
+		normalized.SetNote = true
+		if input.Note != nil {
+			value := strings.TrimSpace(*input.Note)
+			normalized.Note = &value
+		}
+	}
+
+	entry, err := s.repo.Update(ctx, normalized)
+	if err != nil {
+		return EntryAddResult{}, err
+	}
+
+	result := EntryAddResult{
+		Entry:    entry,
+		Warnings: []domain.Warning{},
+	}
+
+	if entry.Type != domain.EntryTypeExpense || s.capLookup == nil {
+		return result, nil
+	}
+
+	monthKey, err := domain.MonthKeyFromDateTimeUTC(entry.TransactionDateUTC)
+	if err != nil {
+		return result, nil
+	}
+
+	capValue, err := s.capLookup.GetByMonth(ctx, monthKey)
+	if err != nil {
+		if errors.Is(err, domain.ErrCapNotFound) {
+			return result, nil
+		}
+		return result, nil
+	}
+
+	if capValue.CurrencyCode != entry.CurrencyCode {
+		return result, nil
+	}
+
+	totalSpend, err := s.capLookup.GetExpenseTotalByMonthAndCurrency(ctx, monthKey, entry.CurrencyCode)
+	if err != nil {
+		return result, nil
+	}
+
+	if totalSpend <= capValue.AmountMinor {
+		return result, nil
+	}
+
+	result.Warnings = append(result.Warnings, domain.Warning{
+		Code:    domain.WarningCodeCapExceeded,
+		Message: domain.CapExceededWarningMessage,
+		Details: domain.CapExceededWarningDetails{
+			MonthKey: monthKey,
+			CapAmount: domain.MoneyAmount{
+				AmountMinor:  capValue.AmountMinor,
+				CurrencyCode: capValue.CurrencyCode,
+			},
+			NewSpendTotal: domain.MoneyAmount{
+				AmountMinor:  totalSpend,
+				CurrencyCode: entry.CurrencyCode,
+			},
+			OverspendAmount: domain.MoneyAmount{
+				AmountMinor:  totalSpend - capValue.AmountMinor,
+				CurrencyCode: entry.CurrencyCode,
+			},
+		},
+	})
+
+	return result, nil
 }
 
 func (s *EntryService) Delete(ctx context.Context, id int64) (domain.EntryDeleteResult, error) {

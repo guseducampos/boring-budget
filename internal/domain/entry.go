@@ -22,6 +22,7 @@ var (
 	ErrInvalidCurrencyCode    = errors.New("invalid currency code")
 	ErrInvalidTransactionDate = errors.New("invalid transaction date")
 	ErrInvalidEntryID         = errors.New("invalid entry id")
+	ErrNoEntryUpdateFields    = errors.New("no entry update fields")
 	ErrInvalidDateRange       = errors.New("invalid date range")
 	ErrInvalidLabelMode       = errors.New("invalid label filter mode")
 	ErrEntryNotFound          = errors.New("entry not found")
@@ -50,6 +51,20 @@ type EntryAddInput struct {
 	Note               string
 }
 
+type EntryUpdateInput struct {
+	ID                 int64
+	Type               *string
+	AmountMinor        *int64
+	CurrencyCode       *string
+	TransactionDateUTC *string
+	SetCategory        bool
+	CategoryID         *int64
+	SetLabelIDs        bool
+	LabelIDs           []int64
+	SetNote            bool
+	Note               *string
+}
+
 type EntryListFilter struct {
 	Type        string
 	CategoryID  *int64
@@ -70,6 +85,16 @@ func ValidateEntryID(id int64) error {
 		return ErrInvalidEntryID
 	}
 	return nil
+}
+
+func HasEntryUpdateChanges(input EntryUpdateInput) bool {
+	return input.Type != nil ||
+		input.AmountMinor != nil ||
+		input.CurrencyCode != nil ||
+		input.TransactionDateUTC != nil ||
+		input.SetCategory ||
+		input.SetLabelIDs ||
+		input.SetNote
 }
 
 func NormalizeEntryType(entryType string) (string, error) {

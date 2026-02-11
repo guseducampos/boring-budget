@@ -17,6 +17,8 @@ func IsValidFormat(value string) bool {
 }
 
 func Print(w io.Writer, format string, envelope Envelope) error {
+	SetProcessExitCodeFromEnvelope(envelope)
+
 	switch strings.ToLower(strings.TrimSpace(format)) {
 	case FormatJSON:
 		payload, err := json.MarshalIndent(envelope, "", "  ")

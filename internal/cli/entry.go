@@ -38,6 +38,19 @@ type entryListFlags struct {
 	labelMode     string
 }
 
+type entryUpdateFlags struct {
+	entryType     string
+	amountMinor   int64
+	currency      string
+	dateRaw       string
+	categoryIDRaw string
+	clearCategory bool
+	labelIDRaw    []string
+	clearLabels   bool
+	note          string
+	clearNote     bool
+}
+
 type entryCLIError struct {
 	Code    string
 	Message string
@@ -59,9 +72,67 @@ func NewEntryCmd(opts *RootOptions) *cobra.Command {
 
 	cmd.AddCommand(
 		newEntryAddCmd(opts),
+		newEntryUpdateCmd(opts),
 		newEntryListCmd(opts),
 		newEntryDeleteCmd(opts),
 	)
+
+	return cmd
+}
+
+func newEntryUpdateCmd(opts *RootOptions) *cobra.Command {
+	flags := &entryUpdateFlags{}
+
+	cmd := &cobra.Command{
+		Use:   "update <id>",
+		Short: "Update a transaction entry",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return printEntryError(cmd, entryOutputFormat(opts), &entryCLIError{
+					Code:    "INVALID_ARGUMENT",
+					Message: "update requires exactly one argument: <id>",
+					Details: map[string]any{"required_args": []string{"id"}},
+				})
+			}
+
+			svc, err := newEntryService(opts)
+			if err != nil {
+				return printEntryError(cmd, entryOutputFormat(opts), err)
+			}
+
+			id, err := parsePositiveInt64(args[0], "id")
+			if err != nil {
+				return printEntryError(cmd, entryOutputFormat(opts), err)
+			}
+
+			input, err := buildEntryUpdateInput(cmd, id, flags)
+			if err != nil {
+				return printEntryError(cmd, entryOutputFormat(opts), err)
+			}
+
+			result, err := svc.UpdateWithWarnings(cmd.Context(), input)
+			if err != nil {
+				return printEntryError(cmd, entryOutputFormat(opts), err)
+			}
+
+			env := output.NewSuccessEnvelope(
+				map[string]any{"entry": result.Entry},
+				toOutputWarnings(result.Warnings),
+			)
+			return output.Print(cmd.OutOrStdout(), entryOutputFormat(opts), env)
+		},
+	}
+
+	cmd.Flags().StringVar(&flags.entryType, "type", "", "Optional entry type: income|expense")
+	cmd.Flags().Int64Var(&flags.amountMinor, "amount-minor", 0, "Optional amount in minor units (must be > 0)")
+	cmd.Flags().StringVar(&flags.currency, "currency", "", "Optional ISO currency code (e.g. USD)")
+	cmd.Flags().StringVar(&flags.dateRaw, "date", "", "Optional transaction date (RFC3339 or YYYY-MM-DD)")
+	cmd.Flags().StringVar(&flags.categoryIDRaw, "category-id", "", "Optional category ID to set")
+	cmd.Flags().BoolVar(&flags.clearCategory, "clear-category", false, "Clear category (make entry orphan)")
+	cmd.Flags().StringArrayVar(&flags.labelIDRaw, "label-id", nil, "Optional label IDs to replace current labels")
+	cmd.Flags().BoolVar(&flags.clearLabels, "clear-labels", false, "Clear all labels")
+	cmd.Flags().StringVar(&flags.note, "note", "", "Optional note value to set")
+	cmd.Flags().BoolVar(&flags.clearNote, "clear-note", false, "Clear note")
 
 	return cmd
 }
@@ -278,6 +349,121 @@ func buildEntryAddInput(cmd *cobra.Command, flags *entryAddFlags) (domain.EntryA
 	}, nil
 }
 
+func buildEntryUpdateInput(cmd *cobra.Command, id int64, flags *entryUpdateFlags) (domain.EntryUpdateInput, error) {
+	if flags == nil {
+		return domain.EntryUpdateInput{}, &entryCLIError{
+			Code:    "INTERNAL_ERROR",
+			Message: "entry update flags unavailable",
+			Details: map[string]any{},
+		}
+	}
+
+	if cmd != nil && cmd.Flags().Changed("clear-category") && cmd.Flags().Changed("category-id") {
+		return domain.EntryUpdateInput{}, &entryCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "clear-category cannot be used with category-id",
+			Details: map[string]any{"fields": []string{"clear-category", "category-id"}},
+		}
+	}
+	if cmd != nil && cmd.Flags().Changed("clear-labels") && cmd.Flags().Changed("label-id") {
+		return domain.EntryUpdateInput{}, &entryCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "clear-labels cannot be used with label-id",
+			Details: map[string]any{"fields": []string{"clear-labels", "label-id"}},
+		}
+	}
+	if cmd != nil && cmd.Flags().Changed("clear-note") && cmd.Flags().Changed("note") {
+		return domain.EntryUpdateInput{}, &entryCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "clear-note cannot be used with note",
+			Details: map[string]any{"fields": []string{"clear-note", "note"}},
+		}
+	}
+
+	input := domain.EntryUpdateInput{ID: id}
+	changed := false
+
+	if cmd != nil && cmd.Flags().Changed("type") {
+		changed = true
+		value := flags.entryType
+		input.Type = &value
+	}
+	if cmd != nil && cmd.Flags().Changed("amount-minor") {
+		changed = true
+		value := flags.amountMinor
+		input.AmountMinor = &value
+	}
+	if cmd != nil && cmd.Flags().Changed("currency") {
+		changed = true
+		value := flags.currency
+		input.CurrencyCode = &value
+	}
+	if cmd != nil && cmd.Flags().Changed("date") {
+		changed = true
+		value := flags.dateRaw
+		input.TransactionDateUTC = &value
+	}
+	if cmd != nil && cmd.Flags().Changed("clear-category") {
+		changed = true
+		input.SetCategory = true
+		input.CategoryID = nil
+	}
+	if cmd != nil && cmd.Flags().Changed("category-id") {
+		changed = true
+		categoryID, err := parsePositiveInt64(flags.categoryIDRaw, "category-id")
+		if err != nil {
+			return domain.EntryUpdateInput{}, err
+		}
+		input.SetCategory = true
+		input.CategoryID = &categoryID
+	}
+	if cmd != nil && cmd.Flags().Changed("clear-labels") {
+		changed = true
+		input.SetLabelIDs = true
+		input.LabelIDs = []int64{}
+	}
+	if cmd != nil && cmd.Flags().Changed("label-id") {
+		changed = true
+		labelIDs, err := parsePositiveInt64List(flags.labelIDRaw, "label-id")
+		if err != nil {
+			return domain.EntryUpdateInput{}, err
+		}
+		input.SetLabelIDs = true
+		input.LabelIDs = labelIDs
+	}
+	if cmd != nil && cmd.Flags().Changed("clear-note") {
+		changed = true
+		input.SetNote = true
+		input.Note = nil
+	}
+	if cmd != nil && cmd.Flags().Changed("note") {
+		changed = true
+		value := flags.note
+		input.SetNote = true
+		input.Note = &value
+	}
+
+	if !changed {
+		return domain.EntryUpdateInput{}, &entryCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "at least one update field is required",
+			Details: map[string]any{
+				"supported_fields": []string{
+					"type",
+					"amount-minor",
+					"currency",
+					"date",
+					"category-id|clear-category",
+					"label-id|clear-labels",
+					"note|clear-note",
+				},
+			},
+		}
+	}
+
+	return input, nil
+}
+
 func buildEntryListFilter(flags *entryListFlags) (domain.EntryListFilter, error) {
 	if flags == nil {
 		return domain.EntryListFilter{}, &entryCLIError{Code: "INTERNAL_ERROR", Message: "entry list flags unavailable", Details: map[string]any{}}
@@ -430,6 +616,7 @@ func codeFromEntryError(err error) string {
 		errors.Is(err, domain.ErrInvalidAmountMinor),
 		errors.Is(err, domain.ErrInvalidTransactionDate),
 		errors.Is(err, domain.ErrInvalidEntryID),
+		errors.Is(err, domain.ErrNoEntryUpdateFields),
 		errors.Is(err, domain.ErrInvalidCategoryID),
 		errors.Is(err, domain.ErrInvalidLabelID),
 		errors.Is(err, domain.ErrInvalidLabelMode):
@@ -461,6 +648,8 @@ func messageFromEntryError(err error) string {
 		return "date/from/to must be RFC3339 or YYYY-MM-DD"
 	case errors.Is(err, domain.ErrInvalidEntryID):
 		return "id must be a positive integer"
+	case errors.Is(err, domain.ErrNoEntryUpdateFields):
+		return "at least one update field is required"
 	case errors.Is(err, domain.ErrInvalidCategoryID):
 		return "category-id must be a positive integer"
 	case errors.Is(err, domain.ErrInvalidLabelID):

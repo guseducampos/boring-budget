@@ -287,6 +287,100 @@ func TestEntryCommandJSONStorageErrorMapsDBError(t *testing.T) {
 	}
 }
 
+func TestEntryCommandJSONUpdateLifecycle(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	categoryA := insertTestCategory(t, db, "A")
+	categoryB := insertTestCategory(t, db, "B")
+	labelA := insertTestLabel(t, db, "alpha")
+	labelB := insertTestLabel(t, db, "beta")
+
+	addPayload := executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "expense",
+		"--amount-minor", "1200",
+		"--currency", "USD",
+		"--date", "2026-02-01",
+		"--category-id", strconv.FormatInt(categoryA, 10),
+		"--label-id", strconv.FormatInt(labelA, 10),
+		"--note", "before",
+	})
+	if ok, _ := addPayload["ok"].(bool); !ok {
+		t.Fatalf("expected add ok=true payload=%v", addPayload)
+	}
+	addData := mustMap(t, addPayload["data"])
+	entryID := int64(mustMap(t, addData["entry"])["id"].(float64))
+
+	updatePayload := executeEntryCmdJSON(t, db, []string{
+		"update", strconv.FormatInt(entryID, 10),
+		"--type", "income",
+		"--amount-minor", "3500",
+		"--currency", "EUR",
+		"--date", "2026-02-05",
+		"--category-id", strconv.FormatInt(categoryB, 10),
+		"--label-id", strconv.FormatInt(labelB, 10),
+		"--note", "after",
+	})
+	if ok, _ := updatePayload["ok"].(bool); !ok {
+		t.Fatalf("expected update ok=true payload=%v", updatePayload)
+	}
+	updateData := mustMap(t, updatePayload["data"])
+	updated := mustMap(t, updateData["entry"])
+	if updated["type"].(string) != "income" || int64(updated["amount_minor"].(float64)) != 3500 || updated["currency_code"].(string) != "EUR" {
+		t.Fatalf("unexpected updated values: %v", updated)
+	}
+	if int64(updated["category_id"].(float64)) != categoryB {
+		t.Fatalf("expected category %d, got %v", categoryB, updated["category_id"])
+	}
+	labels := mustAnySlice(t, updated["label_ids"])
+	if len(labels) != 1 || int64(labels[0].(float64)) != labelB {
+		t.Fatalf("expected labels [%d], got %v", labelB, labels)
+	}
+	if updated["note"].(string) != "after" {
+		t.Fatalf("expected note after, got %v", updated["note"])
+	}
+
+	clearPayload := executeEntryCmdJSON(t, db, []string{
+		"update", strconv.FormatInt(entryID, 10),
+		"--clear-category",
+		"--clear-labels",
+		"--clear-note",
+	})
+	if ok, _ := clearPayload["ok"].(bool); !ok {
+		t.Fatalf("expected clear update ok=true payload=%v", clearPayload)
+	}
+	clearData := mustMap(t, clearPayload["data"])
+	cleared := mustMap(t, clearData["entry"])
+	if _, hasCategory := cleared["category_id"]; hasCategory {
+		t.Fatalf("expected category_id omitted after clear, got %v", cleared["category_id"])
+	}
+	if _, hasLabels := cleared["label_ids"]; hasLabels {
+		t.Fatalf("expected label_ids omitted after clear, got %v", cleared["label_ids"])
+	}
+	if _, hasNote := cleared["note"]; hasNote {
+		t.Fatalf("expected note omitted after clear, got %v", cleared["note"])
+	}
+}
+
+func TestEntryCommandJSONUpdateRequiresFields(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	payload := executeEntryCmdJSON(t, db, []string{"update", "1"})
+	if ok, _ := payload["ok"].(bool); ok {
+		t.Fatalf("expected ok=false payload=%v", payload)
+	}
+	errPayload := mustMap(t, payload["error"])
+	if errPayload["code"].(string) != "INVALID_ARGUMENT" {
+		t.Fatalf("expected INVALID_ARGUMENT, got %v", errPayload["code"])
+	}
+}
+
 func TestEntryCommandHumanOutput(t *testing.T) {
 	t.Parallel()
 
