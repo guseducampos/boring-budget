@@ -207,3 +207,13 @@ Do not add unrelated features without updating:
   - each commit should contain one logical change
   - avoid mixing unrelated refactors/features/fixes in the same commit
   - commit messages should clearly describe that single unit of change
+
+## 17) Changelog Policy
+
+- Keep `CHANGELOG.md` updated for all significant work.
+- Add entries under `Unreleased` for:
+  - new features
+  - behavior changes
+  - migration/schema changes
+  - notable fixes
+- Update changelog as part of the same delivery cycle before marking work complete.
