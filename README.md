@@ -64,6 +64,12 @@ go run ./cmd/budgetto entry add --type expense --amount-minor 1200 --currency US
 go run ./cmd/budgetto entry list --type expense --from 2026-02-01 --to 2026-02-28 --label-id 2 --label-mode any
 go run ./cmd/budgetto entry delete 1
 ```
+- Caps:
+```bash
+go run ./cmd/budgetto cap set --month 2026-02 --amount-minor 50000 --currency USD
+go run ./cmd/budgetto cap show --month 2026-02
+go run ./cmd/budgetto cap history --month 2026-02
+```
 
 ## Current Status
 
@@ -75,3 +81,4 @@ Implemented milestones:
 5. Category CRUD (`add|list|rename|delete`) with non-destructive delete semantics
 6. Label CRUD (`add|list|rename|delete`) with non-destructive link detachment on delete
 7. Entry CRUD (`add|list|delete`) with optional category/labels and combined list filters
+8. Monthly cap management (`set|show|history`) and `CAP_EXCEEDED` warning on `entry add`

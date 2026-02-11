@@ -54,9 +54,17 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/service/entry_service.go`
   - `internal/store/sqlite/entry_repo.go`
   - `internal/cli/entry.go`
+- Cap management implementation:
+  - `internal/domain/cap.go`
+  - `internal/service/cap_service.go`
+  - `internal/store/sqlite/cap_repo.go`
+  - `internal/cli/cap.go`
 - SQLC entry query layer:
   - `internal/store/sqlite/queries/entry.sql`
   - `internal/store/sqlite/sqlc/entry.sql.go`
+- SQLC cap query layer:
+  - `internal/store/sqlite/queries/cap.sql`
+  - `internal/store/sqlite/sqlc/cap.sql.go`
 - Migration:
   - `migrations/0002_transaction_labels_transaction_active_index.sql`
 - Phase 2 tests:
@@ -78,6 +86,7 @@ The format follows a lightweight Keep a Changelog style.
 - Root CLI now registers `category` and `label` command groups.
 - Category/label repositories migrated from embedded raw CRUD SQL strings to SQLC-generated queries.
 - Root CLI now registers the `entry` command group.
+- Root CLI now registers the `cap` command group.
 
 ### Verified
 
@@ -86,6 +95,8 @@ The format follows a lightweight Keep a Changelog style.
 - SQLite DB initialization applies WAL mode and base migrations on startup.
 - End-to-end command checks pass for `category` and `label` lifecycle operations in JSON mode.
 - End-to-end command checks pass for `entry add|list|delete` lifecycle operations in JSON mode.
+- End-to-end command checks pass for `cap set|show|history`.
+- `entry add` now emits `CAP_EXCEEDED` warning when month expense total is over cap.
 
 ## Progress Notes
 
@@ -108,3 +119,9 @@ The format follows a lightweight Keep a Changelog style.
   - Combined list filters: type, category, date range, labels (`any|all|none`)
   - Non-destructive delete with link detachment
   - Service and repository test coverage added for entry domain
+
+- Milestone completed: **Phase 4 Caps and Alerts**
+  - Monthly cap commands integrated in CLI (`set|show|history`)
+  - Cap change history stored and queryable by month
+  - `entry add` preserves allow+warn behavior and returns `CAP_EXCEEDED` warning when applicable
+  - Service and repository test coverage added for caps and warning behavior
