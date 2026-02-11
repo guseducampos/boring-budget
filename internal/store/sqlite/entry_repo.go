@@ -14,6 +14,7 @@ import (
 type EntryRepo struct {
 	db      *sql.DB
 	queries *queries.Queries
+	tx      *sql.Tx
 }
 
 func NewEntryRepo(db *sql.DB) *EntryRepo {
@@ -23,20 +24,28 @@ func NewEntryRepo(db *sql.DB) *EntryRepo {
 	}
 }
 
+func (r *EntryRepo) BindTx(tx *sql.Tx) *EntryRepo {
+	if tx == nil {
+		return r
+	}
+
+	return &EntryRepo{
+		db:      r.db,
+		queries: r.queries.WithTx(tx),
+		tx:      tx,
+	}
+}
+
 func (r *EntryRepo) Add(ctx context.Context, input domain.EntryAddInput) (domain.Entry, error) {
-	if r.db == nil {
-		return domain.Entry{}, fmt.Errorf("add entry: db is nil")
-	}
-
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, qtx, ownsTx, err := r.writeQueries(ctx, "add entry")
 	if err != nil {
-		return domain.Entry{}, fmt.Errorf("add entry begin tx: %w", err)
+		return domain.Entry{}, err
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	qtx := r.queries.WithTx(tx)
+	if ownsTx {
+		defer func() {
+			_ = tx.Rollback()
+		}()
+	}
 
 	categoryID := sql.NullInt64{}
 	if input.CategoryID != nil {
@@ -89,8 +98,10 @@ func (r *EntryRepo) Add(ctx context.Context, input domain.EntryAddInput) (domain
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return domain.Entry{}, fmt.Errorf("add entry commit: %w", err)
+	if ownsTx {
+		if err := tx.Commit(); err != nil {
+			return domain.Entry{}, fmt.Errorf("add entry commit: %w", err)
+		}
 	}
 
 	entry, err := r.getActiveByID(ctx, entryID)
@@ -101,19 +112,15 @@ func (r *EntryRepo) Add(ctx context.Context, input domain.EntryAddInput) (domain
 }
 
 func (r *EntryRepo) Update(ctx context.Context, input domain.EntryUpdateInput) (domain.Entry, error) {
-	if r.db == nil {
-		return domain.Entry{}, fmt.Errorf("update entry: db is nil")
-	}
-
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, qtx, ownsTx, err := r.writeQueries(ctx, "update entry")
 	if err != nil {
-		return domain.Entry{}, fmt.Errorf("update entry begin tx: %w", err)
+		return domain.Entry{}, err
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	qtx := r.queries.WithTx(tx)
+	if ownsTx {
+		defer func() {
+			_ = tx.Rollback()
+		}()
+	}
 
 	current, err := qtx.GetActiveEntryByID(ctx, input.ID)
 	if err != nil {
@@ -244,8 +251,10 @@ func (r *EntryRepo) Update(ctx context.Context, input domain.EntryUpdateInput) (
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return domain.Entry{}, fmt.Errorf("update entry commit: %w", err)
+	if ownsTx {
+		if err := tx.Commit(); err != nil {
+			return domain.Entry{}, fmt.Errorf("update entry commit: %w", err)
+		}
 	}
 
 	return r.getActiveByID(ctx, input.ID)
@@ -286,20 +295,17 @@ func (r *EntryRepo) List(ctx context.Context, filter domain.EntryListFilter) ([]
 }
 
 func (r *EntryRepo) Delete(ctx context.Context, id int64) (domain.EntryDeleteResult, error) {
-	if r.db == nil {
-		return domain.EntryDeleteResult{}, fmt.Errorf("delete entry: db is nil")
-	}
-
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, qtx, ownsTx, err := r.writeQueries(ctx, "delete entry")
 	if err != nil {
-		return domain.EntryDeleteResult{}, fmt.Errorf("delete entry begin tx: %w", err)
+		return domain.EntryDeleteResult{}, err
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
+	if ownsTx {
+		defer func() {
+			_ = tx.Rollback()
+		}()
+	}
 
 	deletedAtUTC := time.Now().UTC().Format(time.RFC3339Nano)
-	qtx := r.queries.WithTx(tx)
 
 	deleteResult, err := qtx.SoftDeleteEntry(ctx, queries.SoftDeleteEntryParams{
 		DeletedAtUtc: sql.NullString{String: deletedAtUTC, Valid: true},
@@ -331,8 +337,10 @@ func (r *EntryRepo) Delete(ctx context.Context, id int64) (domain.EntryDeleteRes
 		return domain.EntryDeleteResult{}, fmt.Errorf("delete entry label links rows affected: %w", err)
 	}
 
-	if err := tx.Commit(); err != nil {
-		return domain.EntryDeleteResult{}, fmt.Errorf("delete entry commit: %w", err)
+	if ownsTx {
+		if err := tx.Commit(); err != nil {
+			return domain.EntryDeleteResult{}, fmt.Errorf("delete entry commit: %w", err)
+		}
 	}
 
 	return domain.EntryDeleteResult{
@@ -340,6 +348,23 @@ func (r *EntryRepo) Delete(ctx context.Context, id int64) (domain.EntryDeleteRes
 		DeletedAtUTC:   deletedAtUTC,
 		DetachedLabels: detachedLabels,
 	}, nil
+}
+
+func (r *EntryRepo) writeQueries(ctx context.Context, operation string) (*sql.Tx, *queries.Queries, bool, error) {
+	if r.tx != nil {
+		return nil, r.queries, false, nil
+	}
+
+	if r.db == nil {
+		return nil, nil, false, fmt.Errorf("%s: db is nil", operation)
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, false, fmt.Errorf("%s begin tx: %w", operation, err)
+	}
+
+	return tx, r.queries.WithTx(tx), true, nil
 }
 
 func (r *EntryRepo) getActiveByID(ctx context.Context, id int64) (domain.Entry, error) {

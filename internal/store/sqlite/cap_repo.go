@@ -13,6 +13,7 @@ import (
 type CapRepo struct {
 	db      *sql.DB
 	queries *queries.Queries
+	tx      *sql.Tx
 }
 
 func NewCapRepo(db *sql.DB) *CapRepo {
@@ -22,20 +23,28 @@ func NewCapRepo(db *sql.DB) *CapRepo {
 	}
 }
 
+func (r *CapRepo) BindTx(tx *sql.Tx) *CapRepo {
+	if tx == nil {
+		return r
+	}
+
+	return &CapRepo{
+		db:      r.db,
+		queries: r.queries.WithTx(tx),
+		tx:      tx,
+	}
+}
+
 func (r *CapRepo) Set(ctx context.Context, input domain.CapSetInput) (domain.MonthlyCap, domain.MonthlyCapChange, error) {
-	if r.db == nil {
-		return domain.MonthlyCap{}, domain.MonthlyCapChange{}, fmt.Errorf("set cap: db is nil")
-	}
-
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, qtx, ownsTx, err := r.writeQueries(ctx, "set cap")
 	if err != nil {
-		return domain.MonthlyCap{}, domain.MonthlyCapChange{}, fmt.Errorf("set cap begin tx: %w", err)
+		return domain.MonthlyCap{}, domain.MonthlyCapChange{}, err
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	qtx := r.queries.WithTx(tx)
+	if ownsTx {
+		defer func() {
+			_ = tx.Rollback()
+		}()
+	}
 
 	existing, err := qtx.GetMonthlyCapByMonthKey(ctx, input.MonthKey)
 	hasExisting := err == nil
@@ -93,8 +102,10 @@ func (r *CapRepo) Set(ctx context.Context, input domain.CapSetInput) (domain.Mon
 		return domain.MonthlyCap{}, domain.MonthlyCapChange{}, fmt.Errorf("set cap read change id: %w", err)
 	}
 
-	if err := tx.Commit(); err != nil {
-		return domain.MonthlyCap{}, domain.MonthlyCapChange{}, fmt.Errorf("set cap commit: %w", err)
+	if ownsTx {
+		if err := tx.Commit(); err != nil {
+			return domain.MonthlyCap{}, domain.MonthlyCapChange{}, fmt.Errorf("set cap commit: %w", err)
+		}
 	}
 
 	currentCap, err := r.GetByMonth(ctx, input.MonthKey)
@@ -118,7 +129,7 @@ func (r *CapRepo) Set(ctx context.Context, input domain.CapSetInput) (domain.Mon
 }
 
 func (r *CapRepo) GetByMonth(ctx context.Context, monthKey string) (domain.MonthlyCap, error) {
-	if r.db == nil {
+	if r.db == nil && r.tx == nil {
 		return domain.MonthlyCap{}, fmt.Errorf("get cap: db is nil")
 	}
 
@@ -134,7 +145,7 @@ func (r *CapRepo) GetByMonth(ctx context.Context, monthKey string) (domain.Month
 }
 
 func (r *CapRepo) ListChangesByMonth(ctx context.Context, monthKey string) ([]domain.MonthlyCapChange, error) {
-	if r.db == nil {
+	if r.db == nil && r.tx == nil {
 		return nil, fmt.Errorf("list cap changes: db is nil")
 	}
 
@@ -151,7 +162,7 @@ func (r *CapRepo) ListChangesByMonth(ctx context.Context, monthKey string) ([]do
 }
 
 func (r *CapRepo) GetExpenseTotalByMonthAndCurrency(ctx context.Context, monthKey, currencyCode string) (int64, error) {
-	if r.db == nil {
+	if r.db == nil && r.tx == nil {
 		return 0, fmt.Errorf("sum expenses by month and currency: db is nil")
 	}
 
@@ -170,6 +181,23 @@ func (r *CapRepo) GetExpenseTotalByMonthAndCurrency(ctx context.Context, monthKe
 	}
 
 	return total, nil
+}
+
+func (r *CapRepo) writeQueries(ctx context.Context, operation string) (*sql.Tx, *queries.Queries, bool, error) {
+	if r.tx != nil {
+		return nil, r.queries, false, nil
+	}
+
+	if r.db == nil {
+		return nil, nil, false, fmt.Errorf("%s: db is nil", operation)
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, false, fmt.Errorf("%s begin tx: %w", operation, err)
+	}
+
+	return tx, r.queries.WithTx(tx), true, nil
 }
 
 func mapSQLCCapToDomain(row queries.MonthlyCap) domain.MonthlyCap {

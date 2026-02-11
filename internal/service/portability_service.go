@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -110,6 +111,33 @@ func (s *PortabilityService) Import(ctx context.Context, format, filePath string
 		}
 	}
 
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return PortabilityImportResult{}, fmt.Errorf("portability import begin tx: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	txEntryRepo, ok := bindEntryRepositoryToTx(s.entryService.repo, tx)
+	if !ok {
+		return PortabilityImportResult{}, fmt.Errorf("portability import: entry repository does not support transactional import")
+	}
+
+	entryServiceOptions := []EntryServiceOption{}
+	if s.entryService.capLookup != nil {
+		txCapLookup, ok := bindEntryCapLookupToTx(s.entryService.capLookup, tx)
+		if !ok {
+			return PortabilityImportResult{}, fmt.Errorf("portability import: cap lookup does not support transactional import")
+		}
+		entryServiceOptions = append(entryServiceOptions, WithEntryCapLookup(txCapLookup))
+	}
+
+	txEntryService, err := NewEntryService(txEntryRepo, entryServiceOptions...)
+	if err != nil {
+		return PortabilityImportResult{}, err
+	}
+
 	result := PortabilityImportResult{Warnings: []domain.Warning{}}
 	for _, record := range records {
 		candidate := domain.Entry{
@@ -130,7 +158,7 @@ func (s *PortabilityService) Import(ctx context.Context, format, filePath string
 			}
 		}
 
-		created, err := s.entryService.AddWithWarnings(ctx, domain.EntryAddInput{
+		created, err := txEntryService.AddWithWarnings(ctx, domain.EntryAddInput{
 			Type:               record.Type,
 			AmountMinor:        record.AmountMinor,
 			CurrencyCode:       record.CurrencyCode,
@@ -146,6 +174,10 @@ func (s *PortabilityService) Import(ctx context.Context, format, filePath string
 		result.Imported++
 		result.Warnings = append(result.Warnings, created.Warnings...)
 		existingSignatures[entrySignature(created.Entry)] = struct{}{}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return PortabilityImportResult{}, fmt.Errorf("portability import commit: %w", err)
 	}
 
 	return result, nil
@@ -366,4 +398,44 @@ func entrySignature(entry domain.Entry) string {
 		strings.Join(labelValues, ","),
 		entry.Note,
 	}, "|")
+}
+
+func bindEntryRepositoryToTx(repo EntryRepository, tx *sql.Tx) (EntryRepository, bool) {
+	method := reflect.ValueOf(repo).MethodByName("BindTx")
+	if !method.IsValid() {
+		return nil, false
+	}
+
+	txArgType := reflect.TypeOf((*sql.Tx)(nil))
+	if method.Type().NumIn() != 1 || method.Type().In(0) != txArgType || method.Type().NumOut() != 1 {
+		return nil, false
+	}
+
+	results := method.Call([]reflect.Value{reflect.ValueOf(tx)})
+	boundRepo, ok := results[0].Interface().(EntryRepository)
+	if !ok || boundRepo == nil {
+		return nil, false
+	}
+
+	return boundRepo, true
+}
+
+func bindEntryCapLookupToTx(capLookup EntryCapLookup, tx *sql.Tx) (EntryCapLookup, bool) {
+	method := reflect.ValueOf(capLookup).MethodByName("BindTx")
+	if !method.IsValid() {
+		return nil, false
+	}
+
+	txArgType := reflect.TypeOf((*sql.Tx)(nil))
+	if method.Type().NumIn() != 1 || method.Type().In(0) != txArgType || method.Type().NumOut() != 1 {
+		return nil, false
+	}
+
+	results := method.Call([]reflect.Value{reflect.ValueOf(tx)})
+	boundCapLookup, ok := results[0].Interface().(EntryCapLookup)
+	if !ok || boundCapLookup == nil {
+		return nil, false
+	}
+
+	return boundCapLookup, true
 }
