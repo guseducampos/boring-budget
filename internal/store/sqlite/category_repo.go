@@ -8,14 +8,19 @@ import (
 	"time"
 
 	"budgetto/internal/domain"
+	queries "budgetto/internal/store/sqlite/sqlc"
 )
 
 type CategoryRepo struct {
-	db *sql.DB
+	db      *sql.DB
+	queries *queries.Queries
 }
 
 func NewCategoryRepo(db *sql.DB) *CategoryRepo {
-	return &CategoryRepo{db: db}
+	return &CategoryRepo{
+		db:      db,
+		queries: queries.New(db),
+	}
 }
 
 func (r *CategoryRepo) Add(ctx context.Context, name string) (domain.Category, error) {
@@ -23,11 +28,7 @@ func (r *CategoryRepo) Add(ctx context.Context, name string) (domain.Category, e
 		return domain.Category{}, fmt.Errorf("add category: db is nil")
 	}
 
-	result, err := r.db.ExecContext(
-		ctx,
-		`INSERT INTO categories (name) VALUES (?);`,
-		name,
-	)
+	result, err := r.queries.CreateCategory(ctx, name)
 	if err != nil {
 		if isUniqueConstraintErr(err) {
 			return domain.Category{}, domain.ErrCategoryNameConflict
@@ -53,29 +54,19 @@ func (r *CategoryRepo) List(ctx context.Context) ([]domain.Category, error) {
 		return nil, fmt.Errorf("list categories: db is nil")
 	}
 
-	rows, err := r.db.QueryContext(
-		ctx,
-		`SELECT id, name, created_at_utc, updated_at_utc
-		FROM categories
-		WHERE deleted_at_utc IS NULL
-		ORDER BY lower(name), id;`,
-	)
+	rows, err := r.queries.ListActiveCategories(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list categories: %w", err)
 	}
-	defer rows.Close()
 
-	categories := make([]domain.Category, 0)
-	for rows.Next() {
-		var category domain.Category
-		if err := rows.Scan(&category.ID, &category.Name, &category.CreatedAtUTC, &category.UpdatedAtUTC); err != nil {
-			return nil, fmt.Errorf("scan category: %w", err)
-		}
-		categories = append(categories, category)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list categories rows: %w", err)
+	categories := make([]domain.Category, 0, len(rows))
+	for _, row := range rows {
+		categories = append(categories, domain.Category{
+			ID:           row.ID,
+			Name:         row.Name,
+			CreatedAtUTC: row.CreatedAtUtc,
+			UpdatedAtUTC: row.UpdatedAtUtc,
+		})
 	}
 
 	return categories, nil
@@ -87,15 +78,11 @@ func (r *CategoryRepo) Rename(ctx context.Context, id int64, newName string) (do
 	}
 
 	nowUTC := time.Now().UTC().Format(time.RFC3339Nano)
-	result, err := r.db.ExecContext(
-		ctx,
-		`UPDATE categories
-		SET name = ?, updated_at_utc = ?
-		WHERE id = ? AND deleted_at_utc IS NULL;`,
-		newName,
-		nowUTC,
-		id,
-	)
+	result, err := r.queries.RenameActiveCategory(ctx, queries.RenameActiveCategoryParams{
+		Name:         newName,
+		UpdatedAtUtc: nowUTC,
+		ID:           id,
+	})
 	if err != nil {
 		if isUniqueConstraintErr(err) {
 			return domain.Category{}, domain.ErrCategoryNameConflict
@@ -133,15 +120,12 @@ func (r *CategoryRepo) SoftDelete(ctx context.Context, id int64) (domain.Categor
 	}()
 
 	nowUTC := time.Now().UTC().Format(time.RFC3339Nano)
-	result, err := tx.ExecContext(
-		ctx,
-		`UPDATE categories
-		SET deleted_at_utc = ?, updated_at_utc = ?
-		WHERE id = ? AND deleted_at_utc IS NULL;`,
-		nowUTC,
-		nowUTC,
-		id,
-	)
+	qtx := r.queries.WithTx(tx)
+	result, err := qtx.SoftDeleteCategory(ctx, queries.SoftDeleteCategoryParams{
+		DeletedAtUtc: sql.NullString{String: nowUTC, Valid: true},
+		UpdatedAtUtc: nowUTC,
+		ID:           id,
+	})
 	if err != nil {
 		return domain.CategoryDeleteResult{}, fmt.Errorf("delete category mark deleted: %w", err)
 	}
@@ -154,14 +138,10 @@ func (r *CategoryRepo) SoftDelete(ctx context.Context, id int64) (domain.Categor
 		return domain.CategoryDeleteResult{}, domain.ErrCategoryNotFound
 	}
 
-	orphanResult, err := tx.ExecContext(
-		ctx,
-		`UPDATE transactions
-		SET category_id = NULL, updated_at_utc = ?
-		WHERE category_id = ? AND deleted_at_utc IS NULL;`,
-		nowUTC,
-		id,
-	)
+	orphanResult, err := qtx.OrphanActiveTransactionsByCategoryID(ctx, queries.OrphanActiveTransactionsByCategoryIDParams{
+		UpdatedAtUtc: nowUTC,
+		CategoryID:   sql.NullInt64{Int64: id, Valid: true},
+	})
 	if err != nil {
 		return domain.CategoryDeleteResult{}, fmt.Errorf("delete category orphan transactions: %w", err)
 	}
@@ -183,15 +163,7 @@ func (r *CategoryRepo) SoftDelete(ctx context.Context, id int64) (domain.Categor
 }
 
 func (r *CategoryRepo) findActiveByID(ctx context.Context, id int64) (domain.Category, error) {
-	var category domain.Category
-
-	err := r.db.QueryRowContext(
-		ctx,
-		`SELECT id, name, created_at_utc, updated_at_utc
-		FROM categories
-		WHERE id = ? AND deleted_at_utc IS NULL;`,
-		id,
-	).Scan(&category.ID, &category.Name, &category.CreatedAtUTC, &category.UpdatedAtUTC)
+	row, err := r.queries.GetActiveCategoryByID(ctx, id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return domain.Category{}, domain.ErrCategoryNotFound
@@ -199,7 +171,12 @@ func (r *CategoryRepo) findActiveByID(ctx context.Context, id int64) (domain.Cat
 		return domain.Category{}, fmt.Errorf("find category by id: %w", err)
 	}
 
-	return category, nil
+	return domain.Category{
+		ID:           row.ID,
+		Name:         row.Name,
+		CreatedAtUTC: row.CreatedAtUtc,
+		UpdatedAtUTC: row.UpdatedAtUtc,
+	}, nil
 }
 
 func isUniqueConstraintErr(err error) bool {

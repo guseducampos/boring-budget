@@ -1,0 +1,13 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    schema: "internal/store/sqlite/sqlc/schema.sql"
+    queries:
+      - "internal/store/sqlite/queries/category.sql"
+      - "internal/store/sqlite/queries/label.sql"
+    gen:
+      go:
+        package: "sqlc"
+        out: "internal/store/sqlite/sqlc"
+        sql_package: "database/sql"
+        emit_json_tags: true
