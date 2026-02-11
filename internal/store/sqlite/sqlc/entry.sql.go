@@ -201,6 +201,59 @@ func (q *Queries) ListActiveEntryLabelIDs(ctx context.Context, transactionID int
 	return items, nil
 }
 
+const listActiveEntryLabelIDsForListFilter = `-- name: ListActiveEntryLabelIDsForListFilter :many
+SELECT tl.transaction_id, tl.label_id
+FROM transaction_labels tl
+INNER JOIN transactions t ON t.id = tl.transaction_id
+WHERE tl.deleted_at_utc IS NULL
+  AND t.deleted_at_utc IS NULL
+  AND (?1 IS NULL OR t.type = ?1)
+  AND (?2 IS NULL OR t.category_id = ?2)
+  AND (?3 IS NULL OR t.transaction_date_utc >= ?3)
+  AND (?4 IS NULL OR t.transaction_date_utc <= ?4)
+ORDER BY tl.transaction_id, tl.label_id
+`
+
+type ListActiveEntryLabelIDsForListFilterParams struct {
+	EntryType   interface{} `json:"entry_type"`
+	CategoryID  interface{} `json:"category_id"`
+	DateFromUtc interface{} `json:"date_from_utc"`
+	DateToUtc   interface{} `json:"date_to_utc"`
+}
+
+type ListActiveEntryLabelIDsForListFilterRow struct {
+	TransactionID int64 `json:"transaction_id"`
+	LabelID       int64 `json:"label_id"`
+}
+
+func (q *Queries) ListActiveEntryLabelIDsForListFilter(ctx context.Context, arg ListActiveEntryLabelIDsForListFilterParams) ([]ListActiveEntryLabelIDsForListFilterRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveEntryLabelIDsForListFilter,
+		arg.EntryType,
+		arg.CategoryID,
+		arg.DateFromUtc,
+		arg.DateToUtc,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListActiveEntryLabelIDsForListFilterRow
+	for rows.Next() {
+		var i ListActiveEntryLabelIDsForListFilterRow
+		if err := rows.Scan(&i.TransactionID, &i.LabelID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const softDeleteEntry = `-- name: SoftDeleteEntry :execresult
 UPDATE transactions
 SET deleted_at_utc = ?, updated_at_utc = ?

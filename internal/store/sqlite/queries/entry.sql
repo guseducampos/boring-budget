@@ -70,6 +70,18 @@ FROM transaction_labels
 WHERE transaction_id = ? AND deleted_at_utc IS NULL
 ORDER BY label_id;
 
+-- name: ListActiveEntryLabelIDsForListFilter :many
+SELECT tl.transaction_id, tl.label_id
+FROM transaction_labels tl
+INNER JOIN transactions t ON t.id = tl.transaction_id
+WHERE tl.deleted_at_utc IS NULL
+  AND t.deleted_at_utc IS NULL
+  AND (sqlc.narg(entry_type) IS NULL OR t.type = sqlc.narg(entry_type))
+  AND (sqlc.narg(category_id) IS NULL OR t.category_id = sqlc.narg(category_id))
+  AND (sqlc.narg(date_from_utc) IS NULL OR t.transaction_date_utc >= sqlc.narg(date_from_utc))
+  AND (sqlc.narg(date_to_utc) IS NULL OR t.transaction_date_utc <= sqlc.narg(date_to_utc))
+ORDER BY tl.transaction_id, tl.label_id;
+
 -- name: SoftDeleteEntryLabelLinks :execresult
 UPDATE transaction_labels
 SET deleted_at_utc = ?

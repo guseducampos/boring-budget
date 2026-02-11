@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"budgetto/internal/domain"
+	sqlcqueries "budgetto/internal/store/sqlite/sqlc"
 )
 
 func TestEntryRepoAddListDeleteWithCategoryAndLabels(t *testing.T) {
@@ -186,6 +187,163 @@ func TestEntryRepoListFiltersByTypeCategoryAndDate(t *testing.T) {
 	}
 	if len(dateEntries) != 1 || dateEntries[0].Type != domain.EntryTypeIncome {
 		t.Fatalf("unexpected date range entries: %+v", dateEntries)
+	}
+}
+
+func TestEntryRepoListReturnsDeterministicLabelsWithoutNPlusOneBehaviorChanges(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db := openEntryTestDB(t)
+	defer db.Close()
+
+	repo := NewEntryRepo(db)
+
+	categoryID := insertCategoryForEntryTest(t, ctx, db, "Category")
+	labelA := insertLabelForEntryTest(t, ctx, db, "A")
+	labelB := insertLabelForEntryTest(t, ctx, db, "B")
+	labelC := insertLabelForEntryTest(t, ctx, db, "C")
+
+	first, err := repo.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        100,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-01T00:00:00Z",
+		CategoryID:         &categoryID,
+		LabelIDs:           []int64{labelC, labelA},
+	})
+	if err != nil {
+		t.Fatalf("add first entry: %v", err)
+	}
+
+	second, err := repo.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        200,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-01T01:00:00Z",
+		CategoryID:         &categoryID,
+	})
+	if err != nil {
+		t.Fatalf("add second entry: %v", err)
+	}
+
+	third, err := repo.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        300,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-01T02:00:00Z",
+		CategoryID:         &categoryID,
+		LabelIDs:           []int64{labelB, labelA},
+	})
+	if err != nil {
+		t.Fatalf("add third entry: %v", err)
+	}
+
+	entries, err := repo.List(ctx, domain.EntryListFilter{})
+	if err != nil {
+		t.Fatalf("list entries: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+
+	if entries[0].ID != first.ID || entries[1].ID != second.ID || entries[2].ID != third.ID {
+		t.Fatalf("unexpected entry order: %+v", entries)
+	}
+	if !reflect.DeepEqual(entries[0].LabelIDs, []int64{labelA, labelC}) {
+		t.Fatalf("unexpected first entry labels: %v", entries[0].LabelIDs)
+	}
+	if entries[1].LabelIDs == nil || len(entries[1].LabelIDs) != 0 {
+		t.Fatalf("expected second entry labels to be empty slice, got %v", entries[1].LabelIDs)
+	}
+	if !reflect.DeepEqual(entries[2].LabelIDs, []int64{labelA, labelB}) {
+		t.Fatalf("unexpected third entry labels: %v", entries[2].LabelIDs)
+	}
+}
+
+func TestListActiveEntryLabelIDsForListFilterQueryOrderingAndFiltering(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db := openEntryTestDB(t)
+	defer db.Close()
+
+	repo := NewEntryRepo(db)
+	sqlc := sqlcqueries.New(db)
+
+	categoryA := insertCategoryForEntryTest(t, ctx, db, "Category A")
+	categoryB := insertCategoryForEntryTest(t, ctx, db, "Category B")
+	labelA := insertLabelForEntryTest(t, ctx, db, "A")
+	labelB := insertLabelForEntryTest(t, ctx, db, "B")
+	labelC := insertLabelForEntryTest(t, ctx, db, "C")
+
+	first, err := repo.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        1000,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-10T00:00:00Z",
+		CategoryID:         &categoryA,
+		LabelIDs:           []int64{labelC, labelA},
+	})
+	if err != nil {
+		t.Fatalf("add first entry: %v", err)
+	}
+
+	second, err := repo.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeIncome,
+		AmountMinor:        2000,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-11T00:00:00Z",
+		CategoryID:         &categoryA,
+		LabelIDs:           []int64{labelB},
+	})
+	if err != nil {
+		t.Fatalf("add second entry: %v", err)
+	}
+
+	third, err := repo.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        3000,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-12T00:00:00Z",
+		CategoryID:         &categoryB,
+		LabelIDs:           []int64{labelB, labelA},
+	})
+	if err != nil {
+		t.Fatalf("add third entry: %v", err)
+	}
+
+	allRows, err := sqlc.ListActiveEntryLabelIDsForListFilter(ctx, sqlcqueries.ListActiveEntryLabelIDsForListFilterParams{})
+	if err != nil {
+		t.Fatalf("list label rows without filter: %v", err)
+	}
+	expectedAll := []sqlcqueries.ListActiveEntryLabelIDsForListFilterRow{
+		{TransactionID: first.ID, LabelID: labelA},
+		{TransactionID: first.ID, LabelID: labelC},
+		{TransactionID: second.ID, LabelID: labelB},
+		{TransactionID: third.ID, LabelID: labelA},
+		{TransactionID: third.ID, LabelID: labelB},
+	}
+	if !reflect.DeepEqual(allRows, expectedAll) {
+		t.Fatalf("unexpected unfiltered label rows: got %+v want %+v", allRows, expectedAll)
+	}
+
+	filteredRows, err := sqlc.ListActiveEntryLabelIDsForListFilter(ctx, sqlcqueries.ListActiveEntryLabelIDsForListFilterParams{
+		EntryType:   domain.EntryTypeExpense,
+		CategoryID:  categoryA,
+		DateFromUtc: "2026-02-09T00:00:00Z",
+		DateToUtc:   "2026-02-10T23:59:59Z",
+	})
+	if err != nil {
+		t.Fatalf("list label rows with filter: %v", err)
+	}
+
+	expectedFiltered := []sqlcqueries.ListActiveEntryLabelIDsForListFilterRow{
+		{TransactionID: first.ID, LabelID: labelA},
+		{TransactionID: first.ID, LabelID: labelC},
+	}
+	if !reflect.DeepEqual(filteredRows, expectedFiltered) {
+		t.Fatalf("unexpected filtered label rows: got %+v want %+v", filteredRows, expectedFiltered)
 	}
 }
 

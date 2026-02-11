@@ -279,18 +279,27 @@ func (r *EntryRepo) List(ctx context.Context, filter domain.EntryListFilter) ([]
 		return nil, fmt.Errorf("list entries: %w", err)
 	}
 
+	labelRows, err := r.queries.ListActiveEntryLabelIDsForListFilter(ctx, queries.ListActiveEntryLabelIDsForListFilterParams{
+		EntryType:   params.EntryType,
+		CategoryID:  params.CategoryID,
+		DateFromUtc: params.DateFromUtc,
+		DateToUtc:   params.DateToUtc,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list entry labels: %w", err)
+	}
+
+	labelIDsByTransactionID := make(map[int64][]int64, len(rows))
+	for _, labelRow := range labelRows {
+		labelIDsByTransactionID[labelRow.TransactionID] = append(labelIDsByTransactionID[labelRow.TransactionID], labelRow.LabelID)
+	}
+
 	entries := make([]domain.Entry, 0, len(rows))
 	for _, row := range rows {
-		labelRows, err := r.queries.ListActiveEntryLabelIDs(ctx, row.ID)
-		if err != nil {
-			return nil, fmt.Errorf("list labels for entry %d: %w", row.ID, err)
+		labelIDs := labelIDsByTransactionID[row.ID]
+		if labelIDs == nil {
+			labelIDs = make([]int64, 0)
 		}
-
-		labelIDs := make([]int64, 0, len(labelRows))
-		for _, labelRow := range labelRows {
-			labelIDs = append(labelIDs, labelRow.LabelID)
-		}
-
 		entries = append(entries, mapSQLCTransactionToDomainEntry(row, labelIDs))
 	}
 
