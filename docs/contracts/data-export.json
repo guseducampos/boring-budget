@@ -1,6 +1,7 @@
 {
   "ok": true,
   "data": {
+    "resource": "entries",
     "exported": 42,
     "file": "./backup/entries.json",
     "format": "json"

@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"budgetto/internal/domain"
@@ -123,6 +125,174 @@ func TestPortabilityServiceImportIdempotentKeepsDuplicateHandling(t *testing.T) 
 	}
 }
 
+func TestPortabilityServiceExportReportJSON(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	portabilitySvc, entrySvc, db := newPortabilityServiceWithReportTestHarness(t)
+	defer db.Close()
+
+	if _, err := entrySvc.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeIncome,
+		AmountMinor:        10000,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-10T10:00:00Z",
+		Note:               "salary",
+	}); err != nil {
+		t.Fatalf("add income entry: %v", err)
+	}
+	if _, err := entrySvc.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        2500,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-11T10:00:00Z",
+		Note:               "groceries",
+	}); err != nil {
+		t.Fatalf("add expense entry: %v", err)
+	}
+
+	reportPath := filepath.Join(t.TempDir(), "exports", "report.json")
+	result, err := portabilitySvc.ExportReport(ctx, PortabilityFormatJSON, reportPath, ReportRequest{
+		Period: domain.ReportPeriodInput{
+			Scope:    domain.ReportScopeMonthly,
+			MonthKey: "2026-02",
+		},
+		Grouping: domain.ReportGroupingMonth,
+	})
+	if err != nil {
+		t.Fatalf("export report json: %v", err)
+	}
+	if len(result.Warnings) != 1 || result.Warnings[0].Code != domain.WarningCodeOrphanSpendingExceeded {
+		t.Fatalf("expected orphan spending warning, got %+v", result.Warnings)
+	}
+
+	content, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("read report export file: %v", err)
+	}
+
+	payload := portabilityReportJSONEnvelope{}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		t.Fatalf("unmarshal report export payload: %v", err)
+	}
+
+	if payload.Report.Period.Scope != domain.ReportScopeMonthly {
+		t.Fatalf("expected monthly scope, got %q", payload.Report.Period.Scope)
+	}
+	if payload.Report.Period.MonthKey != "2026-02" {
+		t.Fatalf("expected month_key=2026-02, got %q", payload.Report.Period.MonthKey)
+	}
+	if len(payload.Report.Earnings.ByCurrency) != 1 || payload.Report.Earnings.ByCurrency[0].TotalMinor != 10000 {
+		t.Fatalf("unexpected earnings by currency: %+v", payload.Report.Earnings.ByCurrency)
+	}
+	if len(payload.Report.Spending.ByCurrency) != 1 || payload.Report.Spending.ByCurrency[0].TotalMinor != 2500 {
+		t.Fatalf("unexpected spending by currency: %+v", payload.Report.Spending.ByCurrency)
+	}
+	if len(payload.Warnings) != 1 || payload.Warnings[0].Code != domain.WarningCodeOrphanSpendingExceeded {
+		t.Fatalf("expected warning in exported report payload, got %+v", payload.Warnings)
+	}
+}
+
+func TestPortabilityServiceExportReportCSV(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	portabilitySvc, entrySvc, db := newPortabilityServiceWithReportTestHarness(t)
+	defer db.Close()
+
+	if _, err := entrySvc.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeIncome,
+		AmountMinor:        7000,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-10T10:00:00Z",
+		Note:               "salary",
+	}); err != nil {
+		t.Fatalf("add income entry: %v", err)
+	}
+	if _, err := entrySvc.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        1200,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-11T10:00:00Z",
+		Note:               "lunch",
+	}); err != nil {
+		t.Fatalf("add expense entry: %v", err)
+	}
+
+	reportPath := filepath.Join(t.TempDir(), "exports", "report.csv")
+	if _, err := portabilitySvc.ExportReport(ctx, PortabilityFormatCSV, reportPath, ReportRequest{
+		Period: domain.ReportPeriodInput{
+			Scope:    domain.ReportScopeMonthly,
+			MonthKey: "2026-02",
+		},
+		Grouping: domain.ReportGroupingMonth,
+	}); err != nil {
+		t.Fatalf("export report csv: %v", err)
+	}
+
+	file, err := os.Open(reportPath)
+	if err != nil {
+		t.Fatalf("open report csv: %v", err)
+	}
+	defer file.Close()
+
+	rows, err := csv.NewReader(file).ReadAll()
+	if err != nil {
+		t.Fatalf("read csv rows: %v", err)
+	}
+	if len(rows) < 4 {
+		t.Fatalf("expected multiple rows, got %d", len(rows))
+	}
+	if rows[0][0] != "record_type" || rows[0][1] != "scope" {
+		t.Fatalf("unexpected csv header: %v", rows[0])
+	}
+	if rows[1][0] != "report_meta" {
+		t.Fatalf("expected first data row to be report_meta, got %v", rows[1])
+	}
+
+	foundEarnings := false
+	foundWarning := false
+	for _, row := range rows[1:] {
+		if len(row) != len(rows[0]) {
+			t.Fatalf("expected stable csv column width, got row=%v", row)
+		}
+		if row[0] == "currency_total" && row[6] == "earnings_by_currency" && row[11] == "USD" && row[12] == "7000" {
+			foundEarnings = true
+		}
+		if row[0] == "warning" && row[24] == domain.WarningCodeOrphanSpendingExceeded {
+			foundWarning = true
+		}
+	}
+
+	if !foundEarnings {
+		t.Fatalf("expected earnings currency row in csv export: %v", rows)
+	}
+	if !foundWarning {
+		t.Fatalf("expected warning row in csv export: %v", rows)
+	}
+}
+
+func TestPortabilityServiceExportReportRequiresReportService(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	portabilitySvc, _, db := newPortabilityServiceTestHarness(t)
+	defer db.Close()
+
+	_, err := portabilitySvc.ExportReport(ctx, PortabilityFormatJSON, filepath.Join(t.TempDir(), "report.json"), ReportRequest{
+		Period: domain.ReportPeriodInput{
+			Scope:    domain.ReportScopeMonthly,
+			MonthKey: "2026-02",
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected error when report service is not configured")
+	}
+	if !strings.Contains(err.Error(), "report export unavailable") {
+		t.Fatalf("expected unavailable error, got %v", err)
+	}
+}
+
 func newPortabilityServiceTestHarness(t *testing.T) (*PortabilityService, *EntryService, *sql.DB) {
 	t.Helper()
 
@@ -143,6 +313,41 @@ func newPortabilityServiceTestHarness(t *testing.T) (*PortabilityService, *Entry
 	portabilitySvc, err := NewPortabilityService(entrySvc, db)
 	if err != nil {
 		t.Fatalf("new portability service: %v", err)
+	}
+
+	return portabilitySvc, entrySvc, db
+}
+
+func newPortabilityServiceWithReportTestHarness(t *testing.T) (*PortabilityService, *EntryService, *sql.DB) {
+	t.Helper()
+
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "portability-service-report-test.db")
+	db, err := sqlitestore.OpenAndMigrate(ctx, dbPath, portabilityMigrationsDirFromThisFile(t))
+	if err != nil {
+		t.Fatalf("open and migrate portability report test db: %v", err)
+	}
+
+	entryRepo := sqlitestore.NewEntryRepo(db)
+	capRepo := sqlitestore.NewCapRepo(db)
+	entrySvc, err := NewEntryService(entryRepo, WithEntryCapLookup(capRepo))
+	if err != nil {
+		t.Fatalf("new entry service: %v", err)
+	}
+
+	capSvc, err := NewCapService(capRepo)
+	if err != nil {
+		t.Fatalf("new cap service: %v", err)
+	}
+
+	reportSvc, err := NewReportService(entrySvc, capSvc)
+	if err != nil {
+		t.Fatalf("new report service: %v", err)
+	}
+
+	portabilitySvc, err := NewPortabilityService(entrySvc, db, WithPortabilityReportService(reportSvc))
+	if err != nil {
+		t.Fatalf("new portability service with report: %v", err)
 	}
 
 	return portabilitySvc, entrySvc, db

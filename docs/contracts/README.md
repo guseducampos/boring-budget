@@ -31,6 +31,7 @@ Rules:
 - `cap-set.json`: `cap set --output json` success contract with cap history change.
 - `report-monthly.json`: `report monthly --output json` success contract.
 - `setup-init.json`: `setup init --output json` onboarding success contract.
-- `data-export.json`: `data export --output json` success contract.
+- `data-export.json`: `data export --resource entries --output json` success contract.
+- `data-export-report.json`: `data export --resource report --output json` success contract.
 - `errors.md`: stable error and warning code catalog.
 - `exit-codes.md`: stable CLI exit-code table.

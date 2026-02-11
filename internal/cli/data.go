@@ -16,10 +16,20 @@ import (
 )
 
 type dataExportFlags struct {
-	format string
-	file   string
-	from   string
-	to     string
+	format              string
+	file                string
+	resource            string
+	from                string
+	to                  string
+	reportScope         string
+	reportMonth         string
+	reportFrom          string
+	reportTo            string
+	reportGroupBy       string
+	reportCategoryIDRaw string
+	reportLabelIDRaw    []string
+	reportLabelMode     string
+	reportConvertTo     string
 }
 
 type dataImportFlags struct {
@@ -57,7 +67,7 @@ func newDataExportCmd(opts *RootOptions) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "export",
-		Short: "Export entries to JSON or CSV",
+		Short: "Export entries or reports to JSON or CSV",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				return printReportError(cmd, reportOutputFormat(opts), invalidArgsError("data export", args))
@@ -70,37 +80,92 @@ func newDataExportCmd(opts *RootOptions) *cobra.Command {
 				})
 			}
 
-			fromUTC, err := normalizeListDateBound(flags.from, false)
-			if err != nil {
-				return printReportError(cmd, reportOutputFormat(opts), &reportCLIError{Code: "INVALID_ARGUMENT", Message: "from must be RFC3339 or YYYY-MM-DD", Details: map[string]any{"field": "from", "value": flags.from}})
-			}
-			toUTC, err := normalizeListDateBound(flags.to, true)
-			if err != nil {
-				return printReportError(cmd, reportOutputFormat(opts), &reportCLIError{Code: "INVALID_ARGUMENT", Message: "to must be RFC3339 or YYYY-MM-DD", Details: map[string]any{"field": "to", "value": flags.to}})
-			}
-			if err := domain.ValidateDateRange(fromUTC, toUTC); err != nil {
-				return printReportError(cmd, reportOutputFormat(opts), err)
-			}
-
 			portabilitySvc, err := newPortabilityService(opts)
 			if err != nil {
 				return printReportError(cmd, reportOutputFormat(opts), err)
 			}
 
-			count, err := portabilitySvc.Export(cmd.Context(), flags.format, flags.file, domain.EntryListFilter{DateFromUTC: fromUTC, DateToUTC: toUTC})
-			if err != nil {
-				return printReportError(cmd, reportOutputFormat(opts), err)
+			resource := normalizeDataExportResource(flags.resource)
+			if resource == "" {
+				return printReportError(cmd, reportOutputFormat(opts), &reportCLIError{
+					Code:    "INVALID_ARGUMENT",
+					Message: "resource must be one of: entries|report",
+					Details: map[string]any{"field": "resource", "value": flags.resource},
+				})
 			}
 
-			env := output.NewSuccessEnvelope(map[string]any{"exported": count, "format": strings.ToLower(flags.format), "file": flags.file}, nil)
+			var data map[string]any
+			var warnings []output.WarningPayload
+			switch resource {
+			case dataExportResourceEntries:
+				fromUTC, err := normalizeListDateBound(flags.from, false)
+				if err != nil {
+					return printReportError(cmd, reportOutputFormat(opts), &reportCLIError{Code: "INVALID_ARGUMENT", Message: "from must be RFC3339 or YYYY-MM-DD", Details: map[string]any{"field": "from", "value": flags.from}})
+				}
+				toUTC, err := normalizeListDateBound(flags.to, true)
+				if err != nil {
+					return printReportError(cmd, reportOutputFormat(opts), &reportCLIError{Code: "INVALID_ARGUMENT", Message: "to must be RFC3339 or YYYY-MM-DD", Details: map[string]any{"field": "to", "value": flags.to}})
+				}
+				if err := domain.ValidateDateRange(fromUTC, toUTC); err != nil {
+					return printReportError(cmd, reportOutputFormat(opts), err)
+				}
+
+				count, err := portabilitySvc.Export(cmd.Context(), flags.format, flags.file, domain.EntryListFilter{DateFromUTC: fromUTC, DateToUTC: toUTC})
+				if err != nil {
+					return printReportError(cmd, reportOutputFormat(opts), err)
+				}
+
+				data = map[string]any{
+					"resource": resource,
+					"exported": count,
+					"format":   strings.ToLower(flags.format),
+					"file":     flags.file,
+				}
+			case dataExportResourceReport:
+				reportReq, err := buildDataExportReportRequest(flags)
+				if err != nil {
+					return printReportError(cmd, reportOutputFormat(opts), err)
+				}
+
+				result, err := portabilitySvc.ExportReport(cmd.Context(), flags.format, flags.file, reportReq)
+				if err != nil {
+					return printReportError(cmd, reportOutputFormat(opts), err)
+				}
+
+				reportPeriod, err := domain.BuildReportPeriod(reportReq.Period)
+				if err != nil {
+					return printReportError(cmd, reportOutputFormat(opts), err)
+				}
+
+				data = map[string]any{
+					"resource": resource,
+					"format":   strings.ToLower(flags.format),
+					"file":     flags.file,
+					"period":   reportPeriod,
+					"grouping": reportReq.Grouping,
+				}
+				warnings = toOutputWarnings(result.Warnings)
+			}
+
+			env := output.NewSuccessEnvelope(data, warnings)
 			return output.Print(cmd.OutOrStdout(), reportOutputFormat(opts), env)
 		},
 	}
 
+	cmd.Flags().StringVar(&flags.resource, "resource", dataExportResourceEntries, "Export resource: entries|report")
 	cmd.Flags().StringVar(&flags.format, "format", "", "Export format: json|csv")
 	cmd.Flags().StringVar(&flags.file, "file", "", "Output file path")
 	cmd.Flags().StringVar(&flags.from, "from", "", "Optional filter start date (RFC3339 or YYYY-MM-DD)")
 	cmd.Flags().StringVar(&flags.to, "to", "", "Optional filter end date (RFC3339 or YYYY-MM-DD)")
+	cmd.Flags().StringVar(&flags.reportScope, "report-scope", "", "Report scope for --resource report: range|monthly|bimonthly|quarterly")
+	cmd.Flags().StringVar(&flags.reportMonth, "report-month", "", "Report month in YYYY-MM for preset scopes")
+	cmd.Flags().StringVar(&flags.reportFrom, "report-from", "", "Report start date for range scope (RFC3339 or YYYY-MM-DD)")
+	cmd.Flags().StringVar(&flags.reportTo, "report-to", "", "Report end date for range scope (RFC3339 or YYYY-MM-DD)")
+	cmd.Flags().StringVar(&flags.reportGroupBy, "report-group-by", reportGroupByMonth, "Report grouping: day|week|month")
+	cmd.Flags().StringVar(&flags.reportCategoryIDRaw, "report-category-id", "", "Optional report category filter")
+	cmd.Flags().StringArrayVar(&flags.reportLabelIDRaw, "report-label-id", nil, "Optional report label filter (repeatable)")
+	cmd.Flags().StringVar(&flags.reportLabelMode, "report-label-mode", domain.LabelFilterModeAny, "Report label filter mode: any|all|none")
+	cmd.Flags().StringVar(&flags.reportConvertTo, "report-convert-to", "", "Optional report target currency (ISO code)")
 
 	return cmd
 }
@@ -225,12 +290,152 @@ func newPortabilityService(opts *RootOptions) (*service.PortabilityService, erro
 		return nil, fmt.Errorf("entry service init: %w", err)
 	}
 
-	portabilitySvc, err := service.NewPortabilityService(entrySvc, opts.db)
+	reportSvc, err := newReportService(opts)
+	if err != nil {
+		return nil, fmt.Errorf("report service init: %w", err)
+	}
+
+	portabilitySvc, err := service.NewPortabilityService(entrySvc, opts.db, service.WithPortabilityReportService(reportSvc))
 	if err != nil {
 		return nil, fmt.Errorf("portability service init: %w", err)
 	}
 
 	return portabilitySvc, nil
+}
+
+const (
+	dataExportResourceEntries = "entries"
+	dataExportResourceReport  = "report"
+)
+
+func normalizeDataExportResource(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case dataExportResourceEntries:
+		return dataExportResourceEntries
+	case dataExportResourceReport:
+		return dataExportResourceReport
+	default:
+		return ""
+	}
+}
+
+func buildDataExportReportRequest(flags *dataExportFlags) (service.ReportRequest, error) {
+	if flags == nil {
+		return service.ReportRequest{}, &reportCLIError{
+			Code:    "INTERNAL_ERROR",
+			Message: "report export flags unavailable",
+			Details: map[string]any{},
+		}
+	}
+
+	reportScope := strings.TrimSpace(flags.reportScope)
+	if reportScope == "" {
+		return service.ReportRequest{}, &reportCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "report-scope is required for report export",
+			Details: map[string]any{"required_flags": []string{"report-scope"}},
+		}
+	}
+
+	scope, err := domain.NormalizeReportScope(reportScope)
+	if err != nil {
+		return service.ReportRequest{}, &reportCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "report-scope must be one of: range|monthly|bimonthly|quarterly",
+			Details: map[string]any{"field": "report-scope", "value": flags.reportScope},
+		}
+	}
+
+	var period reportPeriodInput
+	switch scope {
+	case reportScopeRange:
+		period, err = buildDataExportReportRangePeriod(flags.reportFrom, flags.reportTo)
+		if err != nil {
+			return service.ReportRequest{}, err
+		}
+	case reportScopeMonthly, reportScopeBimonthly, reportScopeQuarterly:
+		period, err = buildDataExportReportPresetPeriod(flags.reportMonth, scope)
+		if err != nil {
+			return service.ReportRequest{}, err
+		}
+	default:
+		return service.ReportRequest{}, &reportCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "report-scope must be one of: range|monthly|bimonthly|quarterly",
+			Details: map[string]any{"field": "report-scope", "value": flags.reportScope},
+		}
+	}
+
+	return buildReportRequest(reportCommonFlags{
+		groupBy:       flags.reportGroupBy,
+		categoryIDRaw: flags.reportCategoryIDRaw,
+		labelIDRaw:    flags.reportLabelIDRaw,
+		labelMode:     flags.reportLabelMode,
+		convertTo:     flags.reportConvertTo,
+	}, period)
+}
+
+func buildDataExportReportRangePeriod(fromRaw, toRaw string) (reportPeriodInput, error) {
+	fromValue := strings.TrimSpace(fromRaw)
+	toValue := strings.TrimSpace(toRaw)
+	if fromValue == "" || toValue == "" {
+		return reportPeriodInput{}, &reportCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "range report export requires both --report-from and --report-to",
+			Details: map[string]any{"required_flags": []string{"report-from", "report-to"}},
+		}
+	}
+
+	fromUTC, err := normalizeListDateBound(fromValue, false)
+	if err != nil {
+		return reportPeriodInput{}, &reportCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "report-from must be RFC3339 or YYYY-MM-DD",
+			Details: map[string]any{"field": "report-from", "value": fromRaw},
+		}
+	}
+	toUTC, err := normalizeListDateBound(toValue, true)
+	if err != nil {
+		return reportPeriodInput{}, &reportCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "report-to must be RFC3339 or YYYY-MM-DD",
+			Details: map[string]any{"field": "report-to", "value": toRaw},
+		}
+	}
+	if err := domain.ValidateDateRange(fromUTC, toUTC); err != nil {
+		return reportPeriodInput{}, err
+	}
+
+	return reportPeriodInput{
+		Scope:   reportScopeRange,
+		FromUTC: fromUTC,
+		ToUTC:   toUTC,
+	}, nil
+}
+
+func buildDataExportReportPresetPeriod(monthRaw, scope string) (reportPeriodInput, error) {
+	month := strings.TrimSpace(monthRaw)
+	if month == "" {
+		return reportPeriodInput{}, &reportCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "report-month is required for preset report scopes",
+			Details: map[string]any{"field": "report-month"},
+		}
+	}
+
+	normalizedMonth, err := domain.NormalizeMonthKey(month)
+	if err != nil {
+		return reportPeriodInput{}, &reportCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "report-month must use YYYY-MM",
+			Details: map[string]any{"field": "report-month", "value": monthRaw},
+		}
+	}
+
+	return reportPeriodInput{
+		Scope:    scope,
+		MonthKey: normalizedMonth,
+	}, nil
 }
 
 func invalidArgsError(command string, args []string) error {

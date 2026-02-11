@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"budgetto/internal/cli/output"
+	"budgetto/internal/domain"
 	sqlitestore "budgetto/internal/store/sqlite"
 )
 
@@ -27,6 +28,11 @@ type dataExportEntry struct {
 	CategoryID         *int64  `json:"category_id,omitempty"`
 	LabelIDs           []int64 `json:"label_ids,omitempty"`
 	Note               string  `json:"note,omitempty"`
+}
+
+type dataExportReportFile struct {
+	Report   domain.Report    `json:"report"`
+	Warnings []domain.Warning `json:"warnings"`
 }
 
 func TestDataCommandJSONExportImportIdempotent(t *testing.T) {
@@ -228,6 +234,95 @@ func TestDataCommandJSONBackupRestore(t *testing.T) {
 	}
 }
 
+func TestDataCommandJSONExportReport(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "income",
+		"--amount-minor", "12000",
+		"--currency", "USD",
+		"--date", "2026-02-01",
+		"--note", "salary",
+	}))
+	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "expense",
+		"--amount-minor", "3000",
+		"--currency", "USD",
+		"--date", "2026-02-05",
+		"--note", "rent",
+	}))
+
+	exportPath := filepath.Join(t.TempDir(), "exports", "report.json")
+	opts := &RootOptions{Output: output.FormatJSON, db: db}
+	payload := executeDataCmdJSONWithOptions(t, opts, []string{
+		"export",
+		"--resource", "report",
+		"--format", "json",
+		"--file", exportPath,
+		"--report-scope", "monthly",
+		"--report-month", "2026-02",
+		"--report-group-by", "month",
+	})
+
+	ok, _ := payload["ok"].(bool)
+	if !ok {
+		t.Fatalf("expected ok=true payload=%v", payload)
+	}
+	if payload["error"] != nil {
+		t.Fatalf("expected error=null payload=%v", payload)
+	}
+
+	warnings := mustAnySlice(t, payload["warnings"])
+	if len(warnings) != 1 {
+		t.Fatalf("expected one warning in report export payload, got %v", warnings)
+	}
+	firstWarning := mustMap(t, warnings[0])
+	if firstWarning["code"].(string) != domain.WarningCodeOrphanSpendingExceeded {
+		t.Fatalf("expected orphan spending warning, got %v", firstWarning)
+	}
+
+	data := mustMap(t, payload["data"])
+	if data["resource"].(string) != "report" {
+		t.Fatalf("expected resource=report, got %v", data["resource"])
+	}
+	if data["format"].(string) != "json" {
+		t.Fatalf("expected format=json, got %v", data["format"])
+	}
+	if data["file"].(string) != exportPath {
+		t.Fatalf("expected file %q, got %v", exportPath, data["file"])
+	}
+	if data["grouping"].(string) != "month" {
+		t.Fatalf("expected grouping=month, got %v", data["grouping"])
+	}
+
+	period := mustMap(t, data["period"])
+	if period["scope"].(string) != "monthly" {
+		t.Fatalf("expected period.scope=monthly, got %v", period["scope"])
+	}
+	if period["month_key"].(string) != "2026-02" {
+		t.Fatalf("expected period.month_key=2026-02, got %v", period["month_key"])
+	}
+
+	reportFile := readReportExportFile(t, exportPath)
+	if reportFile.Report.Period.Scope != domain.ReportScopeMonthly {
+		t.Fatalf("expected exported report scope monthly, got %q", reportFile.Report.Period.Scope)
+	}
+	if len(reportFile.Report.Earnings.ByCurrency) != 1 || reportFile.Report.Earnings.ByCurrency[0].TotalMinor != 12000 {
+		t.Fatalf("unexpected report earnings: %+v", reportFile.Report.Earnings.ByCurrency)
+	}
+	if len(reportFile.Report.Spending.ByCurrency) != 1 || reportFile.Report.Spending.ByCurrency[0].TotalMinor != 3000 {
+		t.Fatalf("unexpected report spending: %+v", reportFile.Report.Spending.ByCurrency)
+	}
+	if len(reportFile.Warnings) != 1 || reportFile.Warnings[0].Code != domain.WarningCodeOrphanSpendingExceeded {
+		t.Fatalf("expected warning in exported report file, got %+v", reportFile.Warnings)
+	}
+}
+
 func executeDataCmdJSONWithOptions(t *testing.T, opts *RootOptions, args []string) map[string]any {
 	t.Helper()
 
@@ -266,6 +361,22 @@ func readExportFile(t *testing.T, filePath string) dataExportFile {
 	payload := dataExportFile{}
 	if err := json.Unmarshal(content, &payload); err != nil {
 		t.Fatalf("unmarshal export file: %v", err)
+	}
+
+	return payload
+}
+
+func readReportExportFile(t *testing.T, filePath string) dataExportReportFile {
+	t.Helper()
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("read report export file: %v", err)
+	}
+
+	payload := dataExportReportFile{}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		t.Fatalf("unmarshal report export file: %v", err)
 	}
 
 	return payload

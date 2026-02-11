@@ -92,7 +92,8 @@ go run ./cmd/budgetto setup show
 ```
 - Data Portability:
 ```bash
-go run ./cmd/budgetto data export --format json --file ./backup/entries.json --from 2026-01-01 --to 2026-12-31
+go run ./cmd/budgetto data export --resource entries --format json --file ./backup/entries.json --from 2026-01-01 --to 2026-12-31
+go run ./cmd/budgetto data export --resource report --format json --file ./backup/report-2026-02.json --report-scope monthly --report-month 2026-02 --report-group-by month
 go run ./cmd/budgetto data import --format csv --file ./seed/entries.csv --idempotent
 go run ./cmd/budgetto data backup --file ./backup/budgetto.db
 go run ./cmd/budgetto data restore --file ./backup/budgetto.db

@@ -118,6 +118,8 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/cli/data_test.go`
 - Portability atomic-import tests:
   - `internal/service/portability_service_test.go`
+- Data portability report export contract:
+  - `docs/contracts/data-export-report.json`
 - SQLC entry query layer:
   - `internal/store/sqlite/queries/entry.sql`
   - `internal/store/sqlite/sqlc/entry.sql.go`
@@ -161,6 +163,7 @@ The format follows a lightweight Keep a Changelog style.
 - Root command now defaults display timezone from persisted settings when `--timezone` is not explicitly provided.
 - Report service now reads orphan warning thresholds from settings when available.
 - Report command wiring now injects settings reader consistently, including FX-enabled report mode.
+- `data export` now supports `--resource report` with report-specific flags and file exports in `json|csv`, while preserving entry export behavior.
 
 ### Verified
 
@@ -181,6 +184,7 @@ The format follows a lightweight Keep a Changelog style.
 - Migration and integration checks pass for audit trigger writes to `audit_events`.
 - Binary-level validation confirms non-zero mapped exit codes on command failures.
 - `go test ./...` covers timezone localization behavior and settings-driven orphan threshold evaluation.
+- `go test ./...` covers `data export --resource report` for JSON/CSV file generation and warning propagation.
 
 ## Progress Notes
 
