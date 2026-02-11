@@ -59,6 +59,18 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/service/cap_service.go`
   - `internal/store/sqlite/cap_repo.go`
   - `internal/cli/cap.go`
+- Reporting and balance implementation:
+  - `internal/domain/report.go`
+  - `internal/service/report_service.go`
+  - `internal/service/balance_service.go`
+  - `internal/cli/report.go`
+  - `internal/cli/balance.go`
+- Reporting and balance tests:
+  - `internal/domain/report_test.go`
+  - `internal/service/report_service_test.go`
+  - `internal/service/balance_service_test.go`
+  - `internal/cli/report_test.go`
+  - `internal/cli/balance_test.go`
 - SQLC entry query layer:
   - `internal/store/sqlite/queries/entry.sql`
   - `internal/store/sqlite/sqlc/entry.sql.go`
@@ -87,6 +99,9 @@ The format follows a lightweight Keep a Changelog style.
 - Category/label repositories migrated from embedded raw CRUD SQL strings to SQLC-generated queries.
 - Root CLI now registers the `entry` command group.
 - Root CLI now registers the `cap` command group.
+- Root CLI now registers `report` and `balance` command groups.
+- Report and balance commands now delegate aggregation logic to service-layer use cases.
+- Report contracts updated to match implemented JSON payload shape (`categories`, cap status/history, warnings envelope).
 
 ### Verified
 
@@ -97,6 +112,8 @@ The format follows a lightweight Keep a Changelog style.
 - End-to-end command checks pass for `entry add|list|delete` lifecycle operations in JSON mode.
 - End-to-end command checks pass for `cap set|show|history`.
 - `entry add` now emits `CAP_EXCEEDED` warning when month expense total is over cap.
+- End-to-end command checks pass for `report range|monthly|bimonthly|quarterly`.
+- End-to-end command checks pass for `balance show` (`lifetime|range|both` scopes).
 
 ## Progress Notes
 
@@ -125,3 +142,10 @@ The format follows a lightweight Keep a Changelog style.
   - Cap change history stored and queryable by month
   - `entry add` preserves allow+warn behavior and returns `CAP_EXCEEDED` warning when applicable
   - Service and repository test coverage added for caps and warning behavior
+
+- Milestone completed: **Phase 4 Reporting and Balance**
+  - Report commands integrated in CLI (`range|monthly|bimonthly|quarterly`)
+  - Grouping supported by `day|week|month` with combinable category/date/label filters
+  - Report output includes earnings/spending/net split, cap status, and cap change history
+  - Orphan threshold warnings added (`ORPHAN_COUNT_THRESHOLD_EXCEEDED`, `ORPHAN_SPENDING_THRESHOLD_EXCEEDED`)
+  - Balance command integrated with `lifetime|range|both` scopes and per-currency net output

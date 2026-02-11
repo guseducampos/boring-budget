@@ -70,6 +70,18 @@ go run ./cmd/budgetto cap set --month 2026-02 --amount-minor 50000 --currency US
 go run ./cmd/budgetto cap show --month 2026-02
 go run ./cmd/budgetto cap history --month 2026-02
 ```
+- Reports:
+```bash
+go run ./cmd/budgetto report range --from 2026-02-01 --to 2026-02-28 --group-by day
+go run ./cmd/budgetto report monthly --month 2026-02 --group-by month
+go run ./cmd/budgetto report bimonthly --month 2026-02 --group-by week
+go run ./cmd/budgetto report quarterly --month 2026-01 --group-by month
+```
+- Balance:
+```bash
+go run ./cmd/budgetto balance show --scope both --from 2026-02-01 --to 2026-02-28
+go run ./cmd/budgetto balance show --scope lifetime
+```
 
 ## Current Status
 
@@ -82,3 +94,5 @@ Implemented milestones:
 6. Label CRUD (`add|list|rename|delete`) with non-destructive link detachment on delete
 7. Entry CRUD (`add|list|delete`) with optional category/labels and combined list filters
 8. Monthly cap management (`set|show|history`) and `CAP_EXCEEDED` warning on `entry add`
+9. Reporting command group (`range|monthly|bimonthly|quarterly`) with grouping/filter options
+10. Balance command group (`show`) with `lifetime|range|both` views

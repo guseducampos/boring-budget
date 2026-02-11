@@ -5,7 +5,7 @@
       "scope": "monthly",
       "month_key": "2026-02",
       "from_utc": "2026-02-01T00:00:00Z",
-      "to_utc": "2026-02-28T23:59:59Z"
+      "to_utc": "2026-02-28T23:59:59.999999999Z"
     },
     "grouping": "month",
     "earnings": {
@@ -18,6 +18,15 @@
       "groups": [
         {
           "period_key": "2026-02",
+          "currency_code": "USD",
+          "total_minor": 250000
+        }
+      ],
+      "categories": [
+        {
+          "category_id": 1,
+          "category_key": "category:1",
+          "category_label": "Category 1",
           "currency_code": "USD",
           "total_minor": 250000
         }
@@ -34,8 +43,16 @@
         {
           "period_key": "2026-02",
           "currency_code": "USD",
-          "total_minor": 62000,
-          "orphan_total_minor": 8000
+          "total_minor": 62000
+        }
+      ],
+      "categories": [
+        {
+          "category_id": 1,
+          "category_key": "category:1",
+          "category_label": "Category 1",
+          "currency_code": "USD",
+          "total_minor": 62000
         }
       ]
     },
@@ -59,32 +76,14 @@
     ],
     "cap_changes": [
       {
-        "id": "capchg_20260210_0001",
+        "id": 1,
         "month_key": "2026-02",
-        "old_amount_minor": 45000,
+        "old_amount_minor": null,
         "new_amount_minor": 50000,
         "currency_code": "USD",
         "changed_at_utc": "2026-02-10T14:35:00Z"
       }
-    ],
-    "balance_views": {
-      "lifetime": {
-        "by_currency": [
-          {
-            "currency_code": "USD",
-            "net_minor": 245000
-          }
-        ]
-      },
-      "range": {
-        "by_currency": [
-          {
-            "currency_code": "USD",
-            "net_minor": 188000
-          }
-        ]
-      }
-    }
+    ]
   },
   "warnings": [],
   "error": null,
