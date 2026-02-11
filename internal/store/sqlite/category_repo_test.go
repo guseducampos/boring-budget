@@ -43,6 +43,68 @@ func TestCategoryRepoAddAndList(t *testing.T) {
 	}
 }
 
+func TestCategoryRepoListByIDsReturnsRequestedActiveCategoriesOnly(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db := openCategoryTestDB(t)
+	defer db.Close()
+
+	repo := NewCategoryRepo(db)
+	rent, err := repo.Add(ctx, "Rent")
+	if err != nil {
+		t.Fatalf("add rent: %v", err)
+	}
+	food, err := repo.Add(ctx, "Food")
+	if err != nil {
+		t.Fatalf("add food: %v", err)
+	}
+	deleted, err := repo.Add(ctx, "Deleted")
+	if err != nil {
+		t.Fatalf("add deleted: %v", err)
+	}
+	if _, err := repo.SoftDelete(ctx, deleted.ID); err != nil {
+		t.Fatalf("soft delete category: %v", err)
+	}
+
+	categories, err := repo.ListByIDs(ctx, []int64{0, -1, 99999, rent.ID, food.ID, rent.ID, deleted.ID})
+	if err != nil {
+		t.Fatalf("list categories by ids: %v", err)
+	}
+
+	if len(categories) != 2 {
+		t.Fatalf("expected 2 categories, got %d (%+v)", len(categories), categories)
+	}
+	if categories[0].ID >= categories[1].ID {
+		t.Fatalf("expected deterministic ascending id order, got %+v", categories)
+	}
+
+	hasRent := false
+	hasFood := false
+	for _, category := range categories {
+		if category.ID == rent.ID {
+			hasRent = true
+		}
+		if category.ID == food.ID {
+			hasFood = true
+		}
+		if category.ID == deleted.ID {
+			t.Fatalf("expected deleted category %d to be excluded", deleted.ID)
+		}
+	}
+	if !hasRent || !hasFood {
+		t.Fatalf("expected categories to include rent(%d) and food(%d), got %+v", rent.ID, food.ID, categories)
+	}
+
+	emptyCategories, err := repo.ListByIDs(ctx, nil)
+	if err != nil {
+		t.Fatalf("list categories by ids with empty input: %v", err)
+	}
+	if len(emptyCategories) != 0 {
+		t.Fatalf("expected no categories for empty input, got %+v", emptyCategories)
+	}
+}
+
 func TestCategoryRepoAddDuplicateNameReturnsConflict(t *testing.T) {
 	t.Parallel()
 

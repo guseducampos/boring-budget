@@ -187,6 +187,7 @@ The format follows a lightweight Keep a Changelog style.
 - Portability import transaction binding now uses explicit typed interfaces (`EntryRepositoryTxBinder` / `EntryCapLookupTxBinder`) instead of reflection-based `BindTx` lookup.
 - `data import` parsing now streams JSON/CSV records incrementally instead of loading full files in memory.
 - `entry list` now loads label links with one batched filtered query instead of per-entry label lookups (removes N+1 query pattern).
+- Report category label resolution now prefers ID-targeted category loading (`ListByIDs`) to avoid full category-table scans.
 - `docs/contracts/*.json` examples are now normalized to the same canonical payloads asserted by CLI golden tests.
 - `docs/contracts/README.md` now documents canonical JSON comparison and `<timestamp_utc>` placeholders for volatile fields.
 
@@ -212,6 +213,7 @@ The format follows a lightweight Keep a Changelog style.
 - `go test ./...` covers `data export --resource report` for JSON/CSV file generation and warning propagation.
 - `go test ./...` covers large streaming JSON/CSV imports and verifies atomic rollback on malformed mid-stream CSV rows.
 - `go test ./...` covers deterministic batched label loading for `entry list` and filtered label-link query ordering.
+- `go test ./...` covers report category label resolution via `ListByIDs` and deterministic category-id normalization/filtering.
 
 ## Progress Notes
 

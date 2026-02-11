@@ -3,7 +3,9 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -67,6 +69,31 @@ func (r *CategoryRepo) List(ctx context.Context) ([]domain.Category, error) {
 			CreatedAtUTC: row.CreatedAtUtc,
 			UpdatedAtUTC: row.UpdatedAtUtc,
 		})
+	}
+
+	return categories, nil
+}
+
+func (r *CategoryRepo) ListByIDs(ctx context.Context, ids []int64) ([]domain.Category, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("list categories by ids: db is nil")
+	}
+
+	normalizedIDs := normalizeCategoryIDs(ids)
+	if len(normalizedIDs) == 0 {
+		return []domain.Category{}, nil
+	}
+
+	categories := make([]domain.Category, 0, len(normalizedIDs))
+	for _, id := range normalizedIDs {
+		category, err := r.findActiveByID(ctx, id)
+		if err != nil {
+			if errors.Is(err, domain.ErrCategoryNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("list categories by ids: %w", err)
+		}
+		categories = append(categories, category)
 	}
 
 	return categories, nil
@@ -186,4 +213,31 @@ func isUniqueConstraintErr(err error) bool {
 
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "unique constraint") || strings.Contains(message, "constraint failed")
+}
+
+func normalizeCategoryIDs(ids []int64) []int64 {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	unique := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		unique[id] = struct{}{}
+	}
+	if len(unique) == 0 {
+		return nil
+	}
+
+	normalized := make([]int64, 0, len(unique))
+	for id := range unique {
+		normalized = append(normalized, id)
+	}
+	sort.Slice(normalized, func(i, j int) bool {
+		return normalized[i] < normalized[j]
+	})
+
+	return normalized
 }

@@ -32,7 +32,8 @@ type reportSettingsReaderStub struct {
 }
 
 type reportCategoryReaderStub struct {
-	listFn func(ctx context.Context) ([]domain.Category, error)
+	listFn      func(ctx context.Context) ([]domain.Category, error)
+	listByIDsFn func(ctx context.Context, ids []int64) ([]domain.Category, error)
 }
 
 func (s *reportFXConverterStub) Convert(ctx context.Context, amountMinor int64, fromCurrency, toCurrency, transactionDateUTC string) (domain.ConvertedAmount, error) {
@@ -44,7 +45,39 @@ func (s *reportSettingsReaderStub) Get(ctx context.Context) (domain.Settings, er
 }
 
 func (s *reportCategoryReaderStub) List(ctx context.Context) ([]domain.Category, error) {
+	if s.listFn == nil {
+		return nil, nil
+	}
 	return s.listFn(ctx)
+}
+
+func (s *reportCategoryReaderStub) ListByIDs(ctx context.Context, ids []int64) ([]domain.Category, error) {
+	if s.listByIDsFn != nil {
+		return s.listByIDsFn(ctx, ids)
+	}
+
+	categories, err := s.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(ids) == 0 || len(categories) == 0 {
+		return []domain.Category{}, nil
+	}
+
+	needed := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		needed[id] = struct{}{}
+	}
+
+	filtered := make([]domain.Category, 0, len(ids))
+	for _, category := range categories {
+		if _, ok := needed[category.ID]; ok {
+			filtered = append(filtered, category)
+		}
+	}
+
+	return filtered, nil
 }
 
 func (s *reportCapReaderStub) Show(ctx context.Context, monthKey string) (domain.MonthlyCap, error) {
@@ -223,6 +256,74 @@ func TestReportServiceGenerateAggregatesDeterministically(t *testing.T) {
 	}
 	if result.Warnings[0].Code != domain.WarningCodeOrphanSpendingExceeded {
 		t.Fatalf("expected orphan spending warning code, got %+v", result.Warnings[0])
+	}
+}
+
+func TestReportServiceGenerateResolvesCategoryLabelsByIDs(t *testing.T) {
+	t.Parallel()
+
+	catTwo := int64(2)
+	catSeven := int64(7)
+	catMissing := int64(99)
+
+	listCalled := false
+	var capturedIDs []int64
+
+	svc, err := NewReportService(
+		&reportEntryReaderStub{
+			listFn: func(ctx context.Context, filter domain.EntryListFilter) ([]domain.Entry, error) {
+				return []domain.Entry{
+					{ID: 1, Type: domain.EntryTypeExpense, AmountMinor: 300, CurrencyCode: "USD", TransactionDateUTC: "2026-02-10T09:00:00Z", CategoryID: &catSeven},
+					{ID: 2, Type: domain.EntryTypeExpense, AmountMinor: 200, CurrencyCode: "USD", TransactionDateUTC: "2026-02-10T09:01:00Z", CategoryID: &catSeven},
+					{ID: 3, Type: domain.EntryTypeExpense, AmountMinor: 50, CurrencyCode: "USD", TransactionDateUTC: "2026-02-10T09:02:00Z", CategoryID: &catTwo},
+					{ID: 4, Type: domain.EntryTypeExpense, AmountMinor: 10, CurrencyCode: "USD", TransactionDateUTC: "2026-02-10T09:03:00Z", CategoryID: &catMissing},
+					{ID: 5, Type: domain.EntryTypeExpense, AmountMinor: 5, CurrencyCode: "USD", TransactionDateUTC: "2026-02-10T09:04:00Z"},
+				}, nil
+			},
+		},
+		nil,
+		WithReportCategoryReader(&reportCategoryReaderStub{
+			listFn: func(ctx context.Context) ([]domain.Category, error) {
+				listCalled = true
+				return nil, errors.New("list should not be called when list-by-ids is supported")
+			},
+			listByIDsFn: func(ctx context.Context, ids []int64) ([]domain.Category, error) {
+				capturedIDs = append([]int64(nil), ids...)
+				return []domain.Category{
+					{ID: catTwo, Name: "   "},
+					{ID: catSeven, Name: " Food "},
+				}, nil
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("new report service: %v", err)
+	}
+
+	result, err := svc.Generate(context.Background(), ReportRequest{
+		Period: domain.ReportPeriodInput{
+			Scope:    domain.ReportScopeMonthly,
+			MonthKey: "2026-02",
+		},
+	})
+	if err != nil {
+		t.Fatalf("generate report: %v", err)
+	}
+
+	if listCalled {
+		t.Fatalf("expected category list-by-ids path to be used")
+	}
+	if !reflect.DeepEqual(capturedIDs, []int64{2, 7, 99}) {
+		t.Fatalf("expected sorted deduplicated category ids [2 7 99], got %v", capturedIDs)
+	}
+
+	if !reflect.DeepEqual(result.Report.Spending.Categories, []domain.CategoryTotal{
+		{CategoryKey: domain.CategoryOrphanKey, CategoryLabel: domain.CategoryOrphanLabel, CurrencyCode: "USD", TotalMinor: 5},
+		{CategoryID: &catTwo, CategoryKey: "category:2", CategoryLabel: domain.CategoryUnknownLabel, CurrencyCode: "USD", TotalMinor: 50},
+		{CategoryID: &catSeven, CategoryKey: "category:7", CategoryLabel: "Food", CurrencyCode: "USD", TotalMinor: 500},
+		{CategoryID: &catMissing, CategoryKey: "category:99", CategoryLabel: domain.CategoryUnknownLabel, CurrencyCode: "USD", TotalMinor: 10},
+	}) {
+		t.Fatalf("unexpected spending categories: %+v", result.Report.Spending.Categories)
 	}
 }
 

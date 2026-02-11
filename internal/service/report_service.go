@@ -25,6 +25,10 @@ type ReportCategoryReader interface {
 	List(ctx context.Context) ([]domain.Category, error)
 }
 
+type ReportCategoryByIDsReader interface {
+	ListByIDs(ctx context.Context, ids []int64) ([]domain.Category, error)
+}
+
 type ReportService struct {
 	entryReader    ReportEntryReader
 	capReader      ReportCapReader
@@ -226,12 +230,23 @@ func (s *ReportService) buildCategoryLabelResolver(ctx context.Context, entries 
 		return nil, nil
 	}
 
+	neededCategoryIDs := mapKeysSorted(categoryIDs)
 	categoryNames := map[int64]string{}
 	if s.categoryReader != nil {
-		categories, err := s.categoryReader.List(ctx)
+		var (
+			categories []domain.Category
+			err        error
+		)
+
+		if byIDsReader, ok := s.categoryReader.(ReportCategoryByIDsReader); ok {
+			categories, err = byIDsReader.ListByIDs(ctx, neededCategoryIDs)
+		} else {
+			categories, err = s.categoryReader.List(ctx)
+		}
 		if err != nil {
 			return nil, err
 		}
+
 		for _, category := range categories {
 			if _, needed := categoryIDs[category.ID]; !needed {
 				continue
@@ -248,6 +263,19 @@ func (s *ReportService) buildCategoryLabelResolver(ctx context.Context, entries 
 		}
 		return domain.CategoryUnknownLabel
 	}, nil
+}
+
+func mapKeysSorted(values map[int64]struct{}) []int64 {
+	keys := make([]int64, 0, len(values))
+	for value := range values {
+		keys = append(keys, value)
+	}
+
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
+	})
+
+	return keys
 }
 
 func (s *ReportService) buildConvertedSummary(ctx context.Context, entries []domain.Entry, targetCurrency string) (domain.ConvertedSummary, bool, error) {
