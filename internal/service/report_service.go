@@ -22,9 +22,10 @@ type ReportCapReader interface {
 }
 
 type ReportService struct {
-	entryReader ReportEntryReader
-	capReader   ReportCapReader
-	fxConverter ReportFXConverter
+	entryReader    ReportEntryReader
+	capReader      ReportCapReader
+	fxConverter    ReportFXConverter
+	settingsReader ReportSettingsReader
 }
 
 type ReportRequest struct {
@@ -45,11 +46,21 @@ type ReportFXConverter interface {
 	Convert(ctx context.Context, amountMinor int64, fromCurrency, toCurrency, transactionDateUTC string) (domain.ConvertedAmount, error)
 }
 
+type ReportSettingsReader interface {
+	Get(ctx context.Context) (domain.Settings, error)
+}
+
 type ReportServiceOption func(*ReportService)
 
 func WithReportFXConverter(converter ReportFXConverter) ReportServiceOption {
 	return func(s *ReportService) {
 		s.fxConverter = converter
+	}
+}
+
+func WithReportSettingsReader(reader ReportSettingsReader) ReportServiceOption {
+	return func(s *ReportService) {
+		s.settingsReader = reader
 	}
 }
 
@@ -162,7 +173,23 @@ func (s *ReportService) Generate(ctx context.Context, req ReportRequest) (Report
 		report.CapChanges = changes
 	}
 
-	warnings, err := s.buildOrphanWarnings(entries, period, report.CapStatus)
+	orphanCountThreshold := domain.DefaultOrphanCountThreshold
+	orphanSpendingThresholdBPS := domain.DefaultOrphanSpendingThresholdBPS
+	if s.settingsReader != nil {
+		settings, err := s.settingsReader.Get(ctx)
+		if err == nil {
+			if settings.OrphanCountThreshold > 0 {
+				orphanCountThreshold = int(settings.OrphanCountThreshold)
+			}
+			if settings.OrphanSpendingThresholdBPS > 0 {
+				orphanSpendingThresholdBPS = int(settings.OrphanSpendingThresholdBPS)
+			}
+		} else if !errors.Is(err, domain.ErrSettingsNotFound) {
+			return ReportResult{}, err
+		}
+	}
+
+	warnings, err := s.buildOrphanWarnings(entries, period, report.CapStatus, orphanCountThreshold, orphanSpendingThresholdBPS)
 	if err != nil {
 		return ReportResult{}, err
 	}
@@ -275,7 +302,7 @@ type orphanSpendStats struct {
 	MonthSpendMinor  int64
 }
 
-func (s *ReportService) buildOrphanWarnings(entries []domain.Entry, period domain.ReportPeriod, capStatus []domain.ReportCapStatus) ([]domain.Warning, error) {
+func (s *ReportService) buildOrphanWarnings(entries []domain.Entry, period domain.ReportPeriod, capStatus []domain.ReportCapStatus, countThreshold int, spendingThresholdBPS int) ([]domain.Warning, error) {
 	warnings := make([]domain.Warning, 0)
 
 	orphanCount := 0
@@ -315,7 +342,7 @@ func (s *ReportService) buildOrphanWarnings(entries []domain.Entry, period domai
 		orphanSpendByMonthCurrency[key] = stats
 	}
 
-	if orphanCount > domain.DefaultOrphanCountThreshold {
+	if orphanCount > countThreshold {
 		warnings = append(warnings, domain.Warning{
 			Code:    domain.WarningCodeOrphanCountExceeded,
 			Message: domain.OrphanCountWarningMessage,
@@ -323,7 +350,7 @@ func (s *ReportService) buildOrphanWarnings(entries []domain.Entry, period domai
 				PeriodFromUTC: period.FromUTC,
 				PeriodToUTC:   period.ToUTC,
 				OrphanCount:   orphanCount,
-				Threshold:     domain.DefaultOrphanCountThreshold,
+				Threshold:     countThreshold,
 			},
 		})
 	}
@@ -350,13 +377,13 @@ func (s *ReportService) buildOrphanWarnings(entries []domain.Entry, period domai
 			continue
 		}
 
-		exceededByMonthSpend := stats.MonthSpendMinor > 0 && (stats.OrphanSpendMinor*10000 > int64(domain.DefaultOrphanSpendingThresholdBPS)*stats.MonthSpendMinor)
+		exceededByMonthSpend := stats.MonthSpendMinor > 0 && (stats.OrphanSpendMinor*10000 > int64(spendingThresholdBPS)*stats.MonthSpendMinor)
 		exceededByCap := false
 		capAmountMinor := int64(0)
 		if capItem, ok := caps[key]; ok {
 			capAmountMinor = capItem.CapAmountMinor
 			if capAmountMinor > 0 {
-				exceededByCap = stats.OrphanSpendMinor*10000 > int64(domain.DefaultOrphanSpendingThresholdBPS)*capAmountMinor
+				exceededByCap = stats.OrphanSpendMinor*10000 > int64(spendingThresholdBPS)*capAmountMinor
 			}
 		}
 
@@ -387,7 +414,7 @@ func (s *ReportService) buildOrphanWarnings(entries []domain.Entry, period domai
 				OrphanSpend:    stats.OrphanSpendMinor,
 				MonthSpend:     stats.MonthSpendMinor,
 				CapAmount:      capAmountPtr,
-				ThresholdBPS:   domain.DefaultOrphanSpendingThresholdBPS,
+				ThresholdBPS:   spendingThresholdBPS,
 				TriggeredBy:    triggeredBy,
 				RatioToSpendBP: ratioBPS(stats.OrphanSpendMinor, stats.MonthSpendMinor),
 				RatioToCapBP:   ratioBPS(stats.OrphanSpendMinor, capAmountMinor),

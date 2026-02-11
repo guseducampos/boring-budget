@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 )
 
 func IsValidFormat(value string) bool {
@@ -59,7 +60,8 @@ func printHuman(w io.Writer, envelope Envelope) error {
 	}
 
 	if envelope.Data != nil {
-		payload, err := json.MarshalIndent(envelope.Data, "", "  ")
+		humanData := localizeDataForHuman(envelope.Data)
+		payload, err := json.MarshalIndent(humanData, "", "  ")
 		if err != nil {
 			return fmt.Errorf("marshal human data: %w", err)
 		}
@@ -73,4 +75,58 @@ func printHuman(w io.Writer, envelope Envelope) error {
 	}
 
 	return nil
+}
+
+func localizeDataForHuman(data any) any {
+	displayTZ := CurrentDisplayTimezone()
+	if strings.EqualFold(displayTZ, "UTC") {
+		return data
+	}
+
+	location, err := time.LoadLocation(displayTZ)
+	if err != nil {
+		return data
+	}
+
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return data
+	}
+
+	var node any
+	if err := json.Unmarshal(raw, &node); err != nil {
+		return data
+	}
+
+	return localizeNode(node, "", location)
+}
+
+func localizeNode(node any, key string, location *time.Location) any {
+	switch value := node.(type) {
+	case map[string]any:
+		updated := make(map[string]any, len(value))
+		for childKey, childValue := range value {
+			updated[childKey] = localizeNode(childValue, childKey, location)
+		}
+		return updated
+	case []any:
+		updated := make([]any, 0, len(value))
+		for _, item := range value {
+			updated = append(updated, localizeNode(item, key, location))
+		}
+		return updated
+	case string:
+		if !strings.HasSuffix(strings.ToLower(strings.TrimSpace(key)), "_utc") {
+			return value
+		}
+		for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+			parsed, err := time.Parse(layout, value)
+			if err == nil {
+				return parsed.In(location).Format(time.RFC3339Nano)
+			}
+		}
+		return value
+	default:
+		return node
+	}
 }

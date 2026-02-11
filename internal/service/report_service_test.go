@@ -27,8 +27,16 @@ type reportFXConverterStub struct {
 	convertFn func(ctx context.Context, amountMinor int64, fromCurrency, toCurrency, transactionDateUTC string) (domain.ConvertedAmount, error)
 }
 
+type reportSettingsReaderStub struct {
+	getFn func(ctx context.Context) (domain.Settings, error)
+}
+
 func (s *reportFXConverterStub) Convert(ctx context.Context, amountMinor int64, fromCurrency, toCurrency, transactionDateUTC string) (domain.ConvertedAmount, error) {
 	return s.convertFn(ctx, amountMinor, fromCurrency, toCurrency, transactionDateUTC)
+}
+
+func (s *reportSettingsReaderStub) Get(ctx context.Context) (domain.Settings, error) {
+	return s.getFn(ctx)
 }
 
 func (s *reportCapReaderStub) Show(ctx context.Context, monthKey string) (domain.MonthlyCap, error) {
@@ -301,5 +309,78 @@ func TestReportServiceGenerateSupportsConvertedSummary(t *testing.T) {
 	}
 	if !foundFXWarning {
 		t.Fatalf("expected FX_ESTIMATE_USED warning, got %+v", result.Warnings)
+	}
+}
+
+func TestReportServiceGenerateUsesSettingsThresholdOverrides(t *testing.T) {
+	t.Parallel()
+
+	svc, err := NewReportService(
+		&reportEntryReaderStub{
+			listFn: func(ctx context.Context, filter domain.EntryListFilter) ([]domain.Entry, error) {
+				return []domain.Entry{
+					{ID: 1, Type: domain.EntryTypeExpense, AmountMinor: 1000, CurrencyCode: "USD", TransactionDateUTC: "2026-02-01T00:00:00Z"},
+					{ID: 2, Type: domain.EntryTypeExpense, AmountMinor: 1000, CurrencyCode: "USD", TransactionDateUTC: "2026-02-02T00:00:00Z"},
+				}, nil
+			},
+		},
+		nil,
+		WithReportSettingsReader(&reportSettingsReaderStub{
+			getFn: func(ctx context.Context) (domain.Settings, error) {
+				return domain.Settings{
+					OrphanCountThreshold:       10,
+					OrphanSpendingThresholdBPS: 10001,
+				}, nil
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("new report service: %v", err)
+	}
+
+	result, err := svc.Generate(context.Background(), ReportRequest{
+		Period: domain.ReportPeriodInput{
+			Scope:    domain.ReportScopeMonthly,
+			MonthKey: "2026-02",
+		},
+	})
+	if err != nil {
+		t.Fatalf("generate report with settings thresholds: %v", err)
+	}
+	if len(result.Warnings) != 0 {
+		t.Fatalf("expected no orphan warnings with overridden thresholds, got %+v", result.Warnings)
+	}
+}
+
+func TestReportServiceGenerateReturnsErrorWhenSettingsReadFails(t *testing.T) {
+	t.Parallel()
+
+	svc, err := NewReportService(
+		&reportEntryReaderStub{
+			listFn: func(ctx context.Context, filter domain.EntryListFilter) ([]domain.Entry, error) {
+				return []domain.Entry{
+					{ID: 1, Type: domain.EntryTypeExpense, AmountMinor: 1000, CurrencyCode: "USD", TransactionDateUTC: "2026-02-01T00:00:00Z"},
+				}, nil
+			},
+		},
+		nil,
+		WithReportSettingsReader(&reportSettingsReaderStub{
+			getFn: func(ctx context.Context) (domain.Settings, error) {
+				return domain.Settings{}, errors.New("settings db unavailable")
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("new report service: %v", err)
+	}
+
+	_, err = svc.Generate(context.Background(), ReportRequest{
+		Period: domain.ReportPeriodInput{
+			Scope:    domain.ReportScopeMonthly,
+			MonthKey: "2026-02",
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected settings read error")
 	}
 }

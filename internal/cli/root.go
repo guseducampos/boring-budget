@@ -2,12 +2,14 @@ package cli
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"budgetto/internal/cli/output"
 	"budgetto/internal/config"
+	"budgetto/internal/domain"
 	sqlitestore "budgetto/internal/store/sqlite"
 	"github.com/spf13/cobra"
 )
@@ -44,15 +46,29 @@ func NewRootCmd() *cobra.Command {
 				return fmt.Errorf("invalid --output value %q: supported values are %s|%s", opts.Output, output.FormatHuman, output.FormatJSON)
 			}
 
-			if _, err := time.LoadLocation(opts.Timezone); err != nil {
-				return fmt.Errorf("invalid --timezone value %q: %w", opts.Timezone, err)
-			}
-
 			opts.Output = strings.ToLower(strings.TrimSpace(opts.Output))
 			db, err := sqlitestore.OpenAndMigrate(cmd.Context(), opts.DBPath, opts.MigrationsDir)
 			if err != nil {
 				return fmt.Errorf("initialize sqlite: %w", err)
 			}
+
+			timezoneFlag := cmd.Flags().Lookup("timezone")
+			timezoneProvided := timezoneFlag != nil && timezoneFlag.Changed
+			if !timezoneProvided {
+				settingsRepo := sqlitestore.NewSettingsRepo(db)
+				settings, err := settingsRepo.Get(cmd.Context())
+				if err == nil && strings.TrimSpace(settings.DisplayTimezone) != "" {
+					opts.Timezone = settings.DisplayTimezone
+				}
+				if err != nil && !errors.Is(err, domain.ErrSettingsNotFound) {
+					return fmt.Errorf("load settings timezone: %w", err)
+				}
+			}
+
+			if _, err := time.LoadLocation(opts.Timezone); err != nil {
+				return fmt.Errorf("invalid --timezone value %q: %w", opts.Timezone, err)
+			}
+			output.SetDisplayTimezone(opts.Timezone)
 
 			opts.db = db
 			return nil

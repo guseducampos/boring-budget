@@ -89,6 +89,9 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/service/entry_service.go`
   - `internal/store/sqlite/entry_repo.go`
   - `internal/store/sqlite/queries/entry.sql`
+- Timezone-aware human rendering and tests:
+  - `internal/cli/output/display_timezone.go`
+  - `internal/cli/output/print_test.go`
 - Reporting architecture extraction:
   - `internal/reporting/aggregate.go`
 - Auditability enforcement:
@@ -150,6 +153,10 @@ The format follows a lightweight Keep a Changelog style.
 - DB-level triggers now write key create/update/delete events into `audit_events` for categories/labels/entries/caps/settings.
 - Added strict process exit-code mapping from JSON envelope error codes (`INVALID_ARGUMENT`→2, `NOT_FOUND`→3, etc.).
 - Added `entry update` command with partial updates and clear/set semantics for category, labels, and note.
+- Human output now localizes `*_utc` fields using CLI display timezone while JSON output remains UTC.
+- Root command now defaults display timezone from persisted settings when `--timezone` is not explicitly provided.
+- Report service now reads orphan warning thresholds from settings when available.
+- Report command wiring now injects settings reader consistently, including FX-enabled report mode.
 
 ### Verified
 
@@ -166,6 +173,7 @@ The format follows a lightweight Keep a Changelog style.
 - End-to-end command checks pass for `setup init|show` and `data export|import|backup|restore`.
 - Migration and integration checks pass for audit trigger writes to `audit_events`.
 - Binary-level validation confirms non-zero mapped exit codes on command failures.
+- `go test ./...` covers timezone localization behavior and settings-driven orphan threshold evaluation.
 
 ## Progress Notes
 

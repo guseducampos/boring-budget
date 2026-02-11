@@ -227,7 +227,12 @@ func newReportService(opts *RootOptions) (*service.ReportService, error) {
 		return nil, fmt.Errorf("cap service init: %w", err)
 	}
 
-	reportSvc, err := service.NewReportService(entrySvc, capSvc)
+	settingsRepo := sqlitestore.NewSettingsRepo(opts.db)
+	reportOptions := []service.ReportServiceOption{
+		service.WithReportSettingsReader(settingsRepo),
+	}
+
+	reportSvc, err := service.NewReportService(entrySvc, capSvc, reportOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("report service init: %w", err)
 	}
@@ -236,7 +241,8 @@ func newReportService(opts *RootOptions) (*service.ReportService, error) {
 	fxClient := fx.NewFrankfurterClient(nil)
 	converter, err := fx.NewConverter(fxClient, fxRepo)
 	if err == nil {
-		reportSvc, err = service.NewReportService(entrySvc, capSvc, service.WithReportFXConverter(converter))
+		reportOptions = append(reportOptions, service.WithReportFXConverter(converter))
+		reportSvc, err = service.NewReportService(entrySvc, capSvc, reportOptions...)
 		if err != nil {
 			return nil, fmt.Errorf("report service init with fx: %w", err)
 		}
