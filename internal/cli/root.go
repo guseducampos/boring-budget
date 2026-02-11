@@ -91,6 +91,8 @@ func NewRootCmd() *cobra.Command {
 		NewLabelCmd(opts),
 		NewEntryCmd(opts),
 		NewCapCmd(opts),
+		NewReportCmd(opts),
+		NewBalanceCmd(opts),
 	)
 
 	return cmd
