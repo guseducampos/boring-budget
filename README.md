@@ -76,11 +76,13 @@ go run ./cmd/budgetto report range --from 2026-02-01 --to 2026-02-28 --group-by 
 go run ./cmd/budgetto report monthly --month 2026-02 --group-by month
 go run ./cmd/budgetto report bimonthly --month 2026-02 --group-by week
 go run ./cmd/budgetto report quarterly --month 2026-01 --group-by month
+go run ./cmd/budgetto report monthly --month 2026-02 --group-by month --convert-to EUR
 ```
 - Balance:
 ```bash
 go run ./cmd/budgetto balance show --scope both --from 2026-02-01 --to 2026-02-28
 go run ./cmd/budgetto balance show --scope lifetime
+go run ./cmd/budgetto balance show --scope range --from 2026-02-01 --to 2026-02-28 --convert-to USD
 ```
 
 ## Current Status

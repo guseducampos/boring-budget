@@ -65,12 +65,22 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/service/balance_service.go`
   - `internal/cli/report.go`
   - `internal/cli/balance.go`
+- FX conversion implementation:
+  - `internal/domain/fx.go`
+  - `internal/fx/converter.go`
+  - `internal/fx/frankfurter.go`
+  - `internal/store/sqlite/fx_repo.go`
+  - `internal/store/sqlite/queries/fx.sql`
+  - `internal/store/sqlite/sqlc/fx.sql.go`
 - Reporting and balance tests:
   - `internal/domain/report_test.go`
   - `internal/service/report_service_test.go`
   - `internal/service/balance_service_test.go`
   - `internal/cli/report_test.go`
   - `internal/cli/balance_test.go`
+- FX tests:
+  - `internal/fx/converter_test.go`
+  - `internal/store/sqlite/fx_repo_test.go`
 - SQLC entry query layer:
   - `internal/store/sqlite/queries/entry.sql`
   - `internal/store/sqlite/sqlc/entry.sql.go`
@@ -102,6 +112,8 @@ The format follows a lightweight Keep a Changelog style.
 - Root CLI now registers `report` and `balance` command groups.
 - Report and balance commands now delegate aggregation logic to service-layer use cases.
 - Report contracts updated to match implemented JSON payload shape (`categories`, cap status/history, warnings envelope).
+- SQLC config now includes `entry`, `cap`, and `fx` query sources (`sqlc.yaml`).
+- `report` and `balance` now support `--convert-to` with persisted FX rate snapshots.
 
 ### Verified
 
@@ -114,6 +126,7 @@ The format follows a lightweight Keep a Changelog style.
 - `entry add` now emits `CAP_EXCEEDED` warning when month expense total is over cap.
 - End-to-end command checks pass for `report range|monthly|bimonthly|quarterly`.
 - End-to-end command checks pass for `balance show` (`lifetime|range|both` scopes).
+- `go test ./...` covers FX conversion logic and FX snapshot repository behavior.
 
 ## Progress Notes
 
@@ -149,3 +162,9 @@ The format follows a lightweight Keep a Changelog style.
   - Report output includes earnings/spending/net split, cap status, and cap change history
   - Orphan threshold warnings added (`ORPHAN_COUNT_THRESHOLD_EXCEEDED`, `ORPHAN_SPENDING_THRESHOLD_EXCEEDED`)
   - Balance command integrated with `lifetime|range|both` scopes and per-currency net output
+
+- Milestone completed: **Phase 5 FX and Converted Net**
+  - Frankfurter provider integration added for optional report/balance conversion (`--convert-to`)
+  - Historical rates used for past/current transactions; latest rate used for future-dated transactions
+  - FX rate snapshots persisted in SQLite (`fx_rate_snapshots`) for reproducible conversions
+  - `FX_ESTIMATE_USED` warning emitted when future-dated conversion uses latest available rate
