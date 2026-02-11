@@ -93,6 +93,7 @@ type Report struct {
 	Earnings   ReportSection      `json:"earnings"`
 	Spending   ReportSection      `json:"spending"`
 	Net        ReportNet          `json:"net"`
+	Converted  *ConvertedSummary  `json:"converted,omitempty"`
 	CapStatus  []ReportCapStatus  `json:"cap_status"`
 	CapChanges []MonthlyCapChange `json:"cap_changes"`
 }
@@ -106,9 +107,17 @@ type BalanceView struct {
 	ByCurrency []CurrencyNet `json:"by_currency"`
 }
 
+type ConvertedBalanceView struct {
+	TargetCurrency   string `json:"target_currency"`
+	NetMinor         int64  `json:"net_minor"`
+	UsedEstimateRate bool   `json:"used_estimate_rate"`
+}
+
 type BalanceViews struct {
-	Lifetime *BalanceView `json:"lifetime,omitempty"`
-	Range    *BalanceView `json:"range,omitempty"`
+	Lifetime          *BalanceView          `json:"lifetime,omitempty"`
+	Range             *BalanceView          `json:"range,omitempty"`
+	LifetimeConverted *ConvertedBalanceView `json:"lifetime_converted,omitempty"`
+	RangeConverted    *ConvertedBalanceView `json:"range_converted,omitempty"`
 }
 
 type OrphanCountWarningDetails struct {

@@ -32,7 +32,7 @@ WHERE month_key = ?
 ORDER BY changed_at_utc, id;
 
 -- name: SumActiveExpensesByMonthAndCurrency :one
-SELECT COALESCE(SUM(amount_minor), 0) AS total_amount_minor
+SELECT CAST(COALESCE(SUM(amount_minor), 0) AS INTEGER) AS total_amount_minor
 FROM transactions
 WHERE type = 'expense'
   AND deleted_at_utc IS NULL

@@ -6,6 +6,7 @@ import (
 
 	"budgetto/internal/cli/output"
 	"budgetto/internal/domain"
+	"budgetto/internal/fx"
 	"budgetto/internal/service"
 	sqlitestore "budgetto/internal/store/sqlite"
 	"github.com/spf13/cobra"
@@ -24,6 +25,7 @@ type balanceShowFlags struct {
 	categoryIDRaw string
 	labelIDRaw    []string
 	labelMode     string
+	convertTo     string
 }
 
 type balanceCurrencyNet struct {
@@ -42,9 +44,11 @@ type balanceRangeView struct {
 }
 
 type balanceData struct {
-	Scope    string            `json:"scope"`
-	Lifetime *balanceView      `json:"lifetime,omitempty"`
-	Range    *balanceRangeView `json:"range,omitempty"`
+	Scope             string                `json:"scope"`
+	Lifetime          *balanceView          `json:"lifetime,omitempty"`
+	Range             *balanceRangeView     `json:"range,omitempty"`
+	LifetimeConverted *balanceConvertedView `json:"lifetime_converted,omitempty"`
+	RangeConverted    *balanceConvertedView `json:"range_converted,omitempty"`
 }
 
 type balanceRequest struct {
@@ -54,9 +58,16 @@ type balanceRequest struct {
 	CategoryID    *int64
 	LabelIDs      []int64
 	LabelMode     string
+	ConvertTo     string
 	IncludeRange  bool
 	IncludeAll    bool
 	IncludeGlobal bool
+}
+
+type balanceConvertedView struct {
+	TargetCurrency   string `json:"target_currency"`
+	NetMinor         int64  `json:"net_minor"`
+	UsedEstimateRate bool   `json:"used_estimate_rate"`
 }
 
 func NewBalanceCmd(opts *RootOptions) *cobra.Command {
@@ -102,6 +113,7 @@ func newBalanceShowCmd(opts *RootOptions) *cobra.Command {
 				CategoryID:      req.CategoryID,
 				LabelIDs:        req.LabelIDs,
 				LabelMode:       req.LabelMode,
+				ConvertTo:       req.ConvertTo,
 			})
 			if err != nil {
 				return printReportError(cmd, reportOutputFormat(opts), err)
@@ -118,8 +130,34 @@ func newBalanceShowCmd(opts *RootOptions) *cobra.Command {
 					ByCurrency: toBalanceCurrencyRows(result.Range.ByCurrency),
 				}
 			}
+			if result.LifetimeConverted != nil {
+				payload.LifetimeConverted = &balanceConvertedView{
+					TargetCurrency:   result.LifetimeConverted.TargetCurrency,
+					NetMinor:         result.LifetimeConverted.NetMinor,
+					UsedEstimateRate: result.LifetimeConverted.UsedEstimateRate,
+				}
+			}
+			if result.RangeConverted != nil {
+				payload.RangeConverted = &balanceConvertedView{
+					TargetCurrency:   result.RangeConverted.TargetCurrency,
+					NetMinor:         result.RangeConverted.NetMinor,
+					UsedEstimateRate: result.RangeConverted.UsedEstimateRate,
+				}
+			}
 
-			env := output.NewSuccessEnvelope(payload, nil)
+			warnings := []domain.Warning{}
+			if (result.LifetimeConverted != nil && result.LifetimeConverted.UsedEstimateRate) ||
+				(result.RangeConverted != nil && result.RangeConverted.UsedEstimateRate) {
+				warnings = append(warnings, domain.Warning{
+					Code:    domain.WarningCodeFXEstimateUsed,
+					Message: domain.FXEstimateWarningMessage,
+					Details: map[string]any{
+						"target_currency": req.ConvertTo,
+					},
+				})
+			}
+
+			env := output.NewSuccessEnvelope(payload, toOutputWarnings(warnings))
 			return output.Print(cmd.OutOrStdout(), reportOutputFormat(opts), env)
 		},
 	}
@@ -130,6 +168,7 @@ func newBalanceShowCmd(opts *RootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&flags.categoryIDRaw, "category-id", "", "Filter by category ID")
 	cmd.Flags().StringArrayVar(&flags.labelIDRaw, "label-id", nil, "Filter by label ID (repeatable)")
 	cmd.Flags().StringVar(&flags.labelMode, "label-mode", "any", "Label filter mode: any|all|none")
+	cmd.Flags().StringVar(&flags.convertTo, "convert-to", "", "Optional target currency (ISO code) for converted net")
 
 	return cmd
 }
@@ -149,7 +188,14 @@ func newBalanceService(opts *RootOptions) (*service.BalanceService, error) {
 		return nil, fmt.Errorf("entry service init: %w", err)
 	}
 
-	balanceSvc, err := service.NewBalanceService(entrySvc)
+	fxRepo := sqlitestore.NewFXRepo(opts.db)
+	fxClient := fx.NewFrankfurterClient(nil)
+	converter, err := fx.NewConverter(fxClient, fxRepo)
+	if err != nil {
+		return nil, fmt.Errorf("fx converter init: %w", err)
+	}
+
+	balanceSvc, err := service.NewBalanceService(entrySvc, service.WithBalanceFXConverter(converter))
 	if err != nil {
 		return nil, fmt.Errorf("balance service init: %w", err)
 	}
@@ -212,6 +258,7 @@ func buildBalanceRequest(flags *balanceShowFlags) (balanceRequest, error) {
 		CategoryID: categoryID,
 		LabelIDs:   labelIDs,
 		LabelMode:  flags.labelMode,
+		ConvertTo:  flags.convertTo,
 		IncludeAll: scope == balanceScopeBoth,
 	}
 

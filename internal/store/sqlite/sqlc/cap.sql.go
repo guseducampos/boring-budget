@@ -121,7 +121,7 @@ func (q *Queries) ListMonthlyCapChangesByMonthKey(ctx context.Context, monthKey 
 }
 
 const sumActiveExpensesByMonthAndCurrency = `-- name: SumActiveExpensesByMonthAndCurrency :one
-SELECT COALESCE(SUM(amount_minor), 0) AS total_amount_minor
+SELECT CAST(COALESCE(SUM(amount_minor), 0) AS INTEGER) AS total_amount_minor
 FROM transactions
 WHERE type = 'expense'
   AND deleted_at_utc IS NULL
@@ -131,16 +131,16 @@ WHERE type = 'expense'
 `
 
 type SumActiveExpensesByMonthAndCurrencyParams struct {
-	CurrencyCode       string `json:"currency_code"`
-	TransactionDateUtc string `json:"transaction_date_utc"`
-	TransactionDateUtc2 string `json:"transaction_date_utc_2"`
+	CurrencyCode         string `json:"currency_code"`
+	TransactionDateUtc   string `json:"transaction_date_utc"`
+	TransactionDateUtc_2 string `json:"transaction_date_utc_2"`
 }
 
 func (q *Queries) SumActiveExpensesByMonthAndCurrency(ctx context.Context, arg SumActiveExpensesByMonthAndCurrencyParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, sumActiveExpensesByMonthAndCurrency, arg.CurrencyCode, arg.TransactionDateUtc, arg.TransactionDateUtc2)
-	var totalAmountMinor int64
-	err := row.Scan(&totalAmountMinor)
-	return totalAmountMinor, err
+	row := q.db.QueryRowContext(ctx, sumActiveExpensesByMonthAndCurrency, arg.CurrencyCode, arg.TransactionDateUtc, arg.TransactionDateUtc_2)
+	var total_amount_minor int64
+	err := row.Scan(&total_amount_minor)
+	return total_amount_minor, err
 }
 
 const updateMonthlyCapByMonthKey = `-- name: UpdateMonthlyCapByMonthKey :execresult
@@ -157,5 +157,10 @@ type UpdateMonthlyCapByMonthKeyParams struct {
 }
 
 func (q *Queries) UpdateMonthlyCapByMonthKey(ctx context.Context, arg UpdateMonthlyCapByMonthKeyParams) (sql.Result, error) {
-	return q.db.ExecContext(ctx, updateMonthlyCapByMonthKey, arg.AmountMinor, arg.CurrencyCode, arg.UpdatedAtUtc, arg.MonthKey)
+	return q.db.ExecContext(ctx, updateMonthlyCapByMonthKey,
+		arg.AmountMinor,
+		arg.CurrencyCode,
+		arg.UpdatedAtUtc,
+		arg.MonthKey,
+	)
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"budgetto/internal/domain"
 )
@@ -22,6 +23,7 @@ type ReportCapReader interface {
 type ReportService struct {
 	entryReader ReportEntryReader
 	capReader   ReportCapReader
+	fxConverter ReportFXConverter
 }
 
 type ReportRequest struct {
@@ -30,6 +32,7 @@ type ReportRequest struct {
 	CategoryID *int64
 	LabelIDs   []int64
 	LabelMode  string
+	ConvertTo  string
 }
 
 type ReportResult struct {
@@ -37,15 +40,35 @@ type ReportResult struct {
 	Warnings []domain.Warning
 }
 
-func NewReportService(entryReader ReportEntryReader, capReader ReportCapReader) (*ReportService, error) {
+type ReportFXConverter interface {
+	Convert(ctx context.Context, amountMinor int64, fromCurrency, toCurrency, transactionDateUTC string) (domain.ConvertedAmount, error)
+}
+
+type ReportServiceOption func(*ReportService)
+
+func WithReportFXConverter(converter ReportFXConverter) ReportServiceOption {
+	return func(s *ReportService) {
+		s.fxConverter = converter
+	}
+}
+
+func NewReportService(entryReader ReportEntryReader, capReader ReportCapReader, opts ...ReportServiceOption) (*ReportService, error) {
 	if entryReader == nil {
 		return nil, fmt.Errorf("report service: entry reader is required")
 	}
 
-	return &ReportService{
+	service := &ReportService{
 		entryReader: entryReader,
 		capReader:   capReader,
-	}, nil
+	}
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(service)
+		}
+	}
+
+	return service, nil
 }
 
 func (s *ReportService) Generate(ctx context.Context, req ReportRequest) (ReportResult, error) {
@@ -131,6 +154,34 @@ func (s *ReportService) Generate(ctx context.Context, req ReportRequest) (Report
 		CapChanges: []domain.MonthlyCapChange{},
 	}
 
+	conversionWarnings := []domain.Warning{}
+	targetCurrency := strings.TrimSpace(req.ConvertTo)
+	if targetCurrency != "" {
+		if s.fxConverter == nil {
+			return ReportResult{}, domain.ErrFXRateUnavailable
+		}
+
+		normalizedTarget, err := domain.NormalizeCurrencyCode(targetCurrency)
+		if err != nil {
+			return ReportResult{}, err
+		}
+
+		convertedSummary, usedEstimate, err := s.buildConvertedSummary(ctx, entries, normalizedTarget)
+		if err != nil {
+			return ReportResult{}, err
+		}
+		report.Converted = &convertedSummary
+		if usedEstimate {
+			conversionWarnings = append(conversionWarnings, domain.Warning{
+				Code:    domain.WarningCodeFXEstimateUsed,
+				Message: domain.FXEstimateWarningMessage,
+				Details: map[string]any{
+					"target_currency": normalizedTarget,
+				},
+			})
+		}
+	}
+
 	if s.capReader != nil {
 		statuses, changes, err := s.buildCapData(ctx, period)
 		if err != nil {
@@ -144,8 +195,39 @@ func (s *ReportService) Generate(ctx context.Context, req ReportRequest) (Report
 	if err != nil {
 		return ReportResult{}, err
 	}
+	warnings = append(warnings, conversionWarnings...)
 
 	return ReportResult{Report: report, Warnings: warnings}, nil
+}
+
+func (s *ReportService) buildConvertedSummary(ctx context.Context, entries []domain.Entry, targetCurrency string) (domain.ConvertedSummary, bool, error) {
+	converted := domain.ConvertedSummary{
+		TargetCurrency: targetCurrency,
+	}
+	usedEstimate := false
+
+	for _, entry := range entries {
+		amount, err := s.fxConverter.Convert(ctx, entry.AmountMinor, entry.CurrencyCode, targetCurrency, entry.TransactionDateUTC)
+		if err != nil {
+			return domain.ConvertedSummary{}, false, err
+		}
+
+		if amount.Snapshot.IsEstimate {
+			usedEstimate = true
+		}
+
+		switch entry.Type {
+		case domain.EntryTypeIncome:
+			converted.EarningsMinor += amount.AmountMinor
+			converted.NetMinor += amount.AmountMinor
+		case domain.EntryTypeExpense:
+			converted.SpendingMinor += amount.AmountMinor
+			converted.NetMinor -= amount.AmountMinor
+		}
+	}
+
+	converted.UsedEstimateRate = usedEstimate
+	return converted, usedEstimate, nil
 }
 
 func (s *ReportService) buildCapData(ctx context.Context, period domain.ReportPeriod) ([]domain.ReportCapStatus, []domain.MonthlyCapChange, error) {

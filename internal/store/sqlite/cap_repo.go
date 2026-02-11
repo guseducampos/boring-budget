@@ -161,9 +161,9 @@ func (r *CapRepo) GetExpenseTotalByMonthAndCurrency(ctx context.Context, monthKe
 	}
 
 	total, err := r.queries.SumActiveExpensesByMonthAndCurrency(ctx, queries.SumActiveExpensesByMonthAndCurrencyParams{
-		CurrencyCode:        currencyCode,
-		TransactionDateUtc:  monthStartUTC,
-		TransactionDateUtc2: monthEndUTC,
+		CurrencyCode:         currencyCode,
+		TransactionDateUtc:   monthStartUTC,
+		TransactionDateUtc_2: monthEndUTC,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("sum expenses by month and currency: %w", err)

@@ -9,6 +9,7 @@ import (
 
 	"budgetto/internal/cli/output"
 	"budgetto/internal/domain"
+	"budgetto/internal/fx"
 	"budgetto/internal/service"
 	sqlitestore "budgetto/internal/store/sqlite"
 	"github.com/spf13/cobra"
@@ -30,6 +31,7 @@ type reportCommonFlags struct {
 	categoryIDRaw string
 	labelIDRaw    []string
 	labelMode     string
+	convertTo     string
 }
 
 type reportRangeFlags struct {
@@ -173,6 +175,7 @@ func bindReportCommonFlags(cmd *cobra.Command, flags *reportCommonFlags) {
 	cmd.Flags().StringVar(&flags.categoryIDRaw, "category-id", "", "Filter by category ID")
 	cmd.Flags().StringArrayVar(&flags.labelIDRaw, "label-id", nil, "Filter by label ID (repeatable)")
 	cmd.Flags().StringVar(&flags.labelMode, "label-mode", "any", "Label filter mode: any|all|none")
+	cmd.Flags().StringVar(&flags.convertTo, "convert-to", "", "Optional target currency (ISO code) for converted totals")
 }
 
 func runReportCommand(cmd *cobra.Command, args []string, opts *RootOptions, flags reportCommonFlags, period reportPeriodInput) error {
@@ -229,6 +232,16 @@ func newReportService(opts *RootOptions) (*service.ReportService, error) {
 		return nil, fmt.Errorf("report service init: %w", err)
 	}
 
+	fxRepo := sqlitestore.NewFXRepo(opts.db)
+	fxClient := fx.NewFrankfurterClient(nil)
+	converter, err := fx.NewConverter(fxClient, fxRepo)
+	if err == nil {
+		reportSvc, err = service.NewReportService(entrySvc, capSvc, service.WithReportFXConverter(converter))
+		if err != nil {
+			return nil, fmt.Errorf("report service init with fx: %w", err)
+		}
+	}
+
 	return reportSvc, nil
 }
 
@@ -263,6 +276,7 @@ func buildReportRequest(flags reportCommonFlags, period reportPeriodInput) (serv
 		CategoryID: categoryID,
 		LabelIDs:   labelIDs,
 		LabelMode:  flags.labelMode,
+		ConvertTo:  flags.convertTo,
 	}, nil
 }
 
@@ -455,6 +469,8 @@ func codeFromReportingError(err error) string {
 		return "INVALID_DATE_RANGE"
 	case errors.Is(err, domain.ErrInvalidCurrencyCode):
 		return "INVALID_CURRENCY_CODE"
+	case errors.Is(err, domain.ErrFXRateUnavailable):
+		return "FX_RATE_UNAVAILABLE"
 	case errors.Is(err, domain.ErrInvalidEntryType),
 		errors.Is(err, domain.ErrInvalidAmountMinor),
 		errors.Is(err, domain.ErrInvalidTransactionDate),
@@ -488,6 +504,8 @@ func messageFromReportingError(err error) string {
 		return "from must be less than or equal to to"
 	case errors.Is(err, domain.ErrInvalidCurrencyCode):
 		return "currency must be a 3-letter ISO code"
+	case errors.Is(err, domain.ErrFXRateUnavailable):
+		return "required FX rate could not be resolved"
 	case errors.Is(err, domain.ErrInvalidEntryType):
 		return "type must be one of: income|expense"
 	case errors.Is(err, domain.ErrInvalidAmountMinor):

@@ -16,6 +16,14 @@ func (s *balanceEntryReaderStub) List(ctx context.Context, filter domain.EntryLi
 	return s.listFn(ctx, filter)
 }
 
+type balanceFXConverterStub struct {
+	convertFn func(ctx context.Context, amountMinor int64, fromCurrency, toCurrency, transactionDateUTC string) (domain.ConvertedAmount, error)
+}
+
+func (s *balanceFXConverterStub) Convert(ctx context.Context, amountMinor int64, fromCurrency, toCurrency, transactionDateUTC string) (domain.ConvertedAmount, error) {
+	return s.convertFn(ctx, amountMinor, fromCurrency, toCurrency, transactionDateUTC)
+}
+
 func TestNewBalanceServiceRequiresEntryReader(t *testing.T) {
 	t.Parallel()
 
@@ -118,5 +126,51 @@ func TestBalanceServiceComputeDefaultsToBothViews(t *testing.T) {
 
 	if result.Lifetime == nil || result.Range == nil {
 		t.Fatalf("expected both views when none selected, got %+v", result)
+	}
+}
+
+func TestBalanceServiceComputeSupportsConvertedViews(t *testing.T) {
+	t.Parallel()
+
+	svc, err := NewBalanceService(
+		&balanceEntryReaderStub{
+			listFn: func(ctx context.Context, filter domain.EntryListFilter) ([]domain.Entry, error) {
+				return []domain.Entry{
+					{ID: 1, Type: domain.EntryTypeIncome, AmountMinor: 1000, CurrencyCode: "USD", TransactionDateUTC: "2026-01-01T00:00:00Z"},
+					{ID: 2, Type: domain.EntryTypeExpense, AmountMinor: 400, CurrencyCode: "EUR", TransactionDateUTC: "2026-12-01T00:00:00Z"},
+				}, nil
+			},
+		},
+		WithBalanceFXConverter(&balanceFXConverterStub{
+			convertFn: func(ctx context.Context, amountMinor int64, fromCurrency, toCurrency, transactionDateUTC string) (domain.ConvertedAmount, error) {
+				return domain.ConvertedAmount{
+					AmountMinor: amountMinor,
+					Snapshot: domain.FXRateSnapshot{
+						IsEstimate: transactionDateUTC == "2026-12-01T00:00:00Z",
+					},
+				}, nil
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("new balance service: %v", err)
+	}
+
+	result, err := svc.Compute(context.Background(), BalanceRequest{
+		IncludeLifetime: true,
+		ConvertTo:       "USD",
+	})
+	if err != nil {
+		t.Fatalf("compute converted balance: %v", err)
+	}
+
+	if result.LifetimeConverted == nil {
+		t.Fatalf("expected lifetime converted view")
+	}
+	if result.LifetimeConverted.NetMinor != 600 {
+		t.Fatalf("expected converted net 600, got %d", result.LifetimeConverted.NetMinor)
+	}
+	if !result.LifetimeConverted.UsedEstimateRate {
+		t.Fatalf("expected converted view to signal estimate usage")
 	}
 }

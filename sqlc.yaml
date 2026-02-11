@@ -5,6 +5,9 @@ sql:
     queries:
       - "internal/store/sqlite/queries/category.sql"
       - "internal/store/sqlite/queries/label.sql"
+      - "internal/store/sqlite/queries/entry.sql"
+      - "internal/store/sqlite/queries/cap.sql"
+      - "internal/store/sqlite/queries/fx.sql"
     gen:
       go:
         package: "sqlc"
