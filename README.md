@@ -41,11 +41,28 @@ It is designed for two audiences:
 
 ## Installation
 
-### Prerequisites
+### Universal binary (recommended)
 
+- Download the artifact for your platform from CI/release outputs:
+  - `darwin/amd64`, `darwin/arm64`
+  - `linux/amd64`, `linux/arm64`
+  - `windows/amd64`
+- Move the binary to your `PATH` and make it executable on macOS/Linux:
+
+```bash
+chmod +x boring-budget
+```
+
+Then verify:
+
+```bash
+boring-budget --help
+```
+
+### Build from source (development)
+
+Prerequisite:
 - Go `1.24+`
-
-### Build/install
 
 ```bash
 go install ./cmd/boring-budget
@@ -62,7 +79,7 @@ go run ./cmd/boring-budget --help
 ### 1) Initialize settings
 
 ```bash
-go run ./cmd/boring-budget setup init \
+boring-budget setup init \
   --default-currency USD \
   --timezone America/New_York \
   --opening-balance-minor 100000 \
@@ -74,21 +91,21 @@ go run ./cmd/boring-budget setup init \
 ### 2) Create categories and labels
 
 ```bash
-go run ./cmd/boring-budget category add "Food"
-go run ./cmd/boring-budget label add "Recurring"
+boring-budget category add "Food"
+boring-budget label add "Recurring"
 ```
 
 ### 3) Add entries
 
 ```bash
-go run ./cmd/boring-budget entry add \
+boring-budget entry add \
   --type income \
   --amount-minor 350000 \
   --currency USD \
   --date 2026-02-01 \
   --note "Salary"
 
-go run ./cmd/boring-budget entry add \
+boring-budget entry add \
   --type expense \
   --amount-minor 1250 \
   --currency USD \
@@ -101,8 +118,8 @@ go run ./cmd/boring-budget entry add \
 ### 4) Run reports
 
 ```bash
-go run ./cmd/boring-budget report monthly --month 2026-02 --group-by month
-go run ./cmd/boring-budget balance show --scope both --from 2026-02-01 --to 2026-02-28
+boring-budget report monthly --month 2026-02 --group-by month
+boring-budget balance show --scope both --from 2026-02-01 --to 2026-02-28
 ```
 
 ## Command Guide
