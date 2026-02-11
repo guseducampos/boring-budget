@@ -100,6 +100,17 @@ func TestReportCommandJSONScopesAndFilters(t *testing.T) {
 	if got := reportTotalForCurrency(t, spendingTotals, "EUR"); got != 400 {
 		t.Fatalf("expected monthly spending EUR=400, got %d", got)
 	}
+	spendingCategories := mustAnySlice(t, spending["categories"])
+	foundFoodCategory := false
+	for _, rawCategory := range spendingCategories {
+		category := mustMap(t, rawCategory)
+		if category["category_key"].(string) == "category:"+strconv.FormatInt(categoryID, 10) && category["category_label"].(string) == "Food" {
+			foundFoodCategory = true
+		}
+	}
+	if !foundFoodCategory {
+		t.Fatalf("expected spending category label Food, got %v", spendingCategories)
+	}
 
 	net := mustMap(t, monthlyData["net"])
 	netTotals := mustAnySlice(t, net["by_currency"])

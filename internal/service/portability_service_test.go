@@ -172,6 +172,12 @@ func TestPortabilityServiceExportReportJSON(t *testing.T) {
 	portabilitySvc, entrySvc, db := newPortabilityServiceWithReportTestHarness(t)
 	defer db.Close()
 
+	categoryRepo := sqlitestore.NewCategoryRepo(db)
+	category, err := categoryRepo.Add(ctx, "Housing")
+	if err != nil {
+		t.Fatalf("add category: %v", err)
+	}
+
 	if _, err := entrySvc.Add(ctx, domain.EntryAddInput{
 		Type:               domain.EntryTypeIncome,
 		AmountMinor:        10000,
@@ -186,6 +192,7 @@ func TestPortabilityServiceExportReportJSON(t *testing.T) {
 		AmountMinor:        2500,
 		CurrencyCode:       "USD",
 		TransactionDateUTC: "2026-02-11T10:00:00Z",
+		CategoryID:         &category.ID,
 		Note:               "groceries",
 	}); err != nil {
 		t.Fatalf("add expense entry: %v", err)
@@ -202,8 +209,8 @@ func TestPortabilityServiceExportReportJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export report json: %v", err)
 	}
-	if len(result.Warnings) != 1 || result.Warnings[0].Code != domain.WarningCodeOrphanSpendingExceeded {
-		t.Fatalf("expected orphan spending warning, got %+v", result.Warnings)
+	if len(result.Warnings) != 0 {
+		t.Fatalf("expected no warnings, got %+v", result.Warnings)
 	}
 
 	content, err := os.ReadFile(reportPath)
@@ -228,8 +235,11 @@ func TestPortabilityServiceExportReportJSON(t *testing.T) {
 	if len(payload.Report.Spending.ByCurrency) != 1 || payload.Report.Spending.ByCurrency[0].TotalMinor != 2500 {
 		t.Fatalf("unexpected spending by currency: %+v", payload.Report.Spending.ByCurrency)
 	}
-	if len(payload.Warnings) != 1 || payload.Warnings[0].Code != domain.WarningCodeOrphanSpendingExceeded {
-		t.Fatalf("expected warning in exported report payload, got %+v", payload.Warnings)
+	if len(payload.Report.Spending.Categories) != 1 || payload.Report.Spending.Categories[0].CategoryLabel != "Housing" {
+		t.Fatalf("expected spending category label Housing, got %+v", payload.Report.Spending.Categories)
+	}
+	if len(payload.Warnings) != 0 {
+		t.Fatalf("expected no warnings in exported report payload, got %+v", payload.Warnings)
 	}
 }
 
@@ -380,7 +390,8 @@ func newPortabilityServiceWithReportTestHarness(t *testing.T) (*PortabilityServi
 		t.Fatalf("new cap service: %v", err)
 	}
 
-	reportSvc, err := NewReportService(entrySvc, capSvc)
+	categoryRepo := sqlitestore.NewCategoryRepo(db)
+	reportSvc, err := NewReportService(entrySvc, capSvc, WithReportCategoryReader(categoryRepo))
 	if err != nil {
 		t.Fatalf("new report service: %v", err)
 	}

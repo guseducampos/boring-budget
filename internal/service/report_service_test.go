@@ -31,12 +31,20 @@ type reportSettingsReaderStub struct {
 	getFn func(ctx context.Context) (domain.Settings, error)
 }
 
+type reportCategoryReaderStub struct {
+	listFn func(ctx context.Context) ([]domain.Category, error)
+}
+
 func (s *reportFXConverterStub) Convert(ctx context.Context, amountMinor int64, fromCurrency, toCurrency, transactionDateUTC string) (domain.ConvertedAmount, error) {
 	return s.convertFn(ctx, amountMinor, fromCurrency, toCurrency, transactionDateUTC)
 }
 
 func (s *reportSettingsReaderStub) Get(ctx context.Context) (domain.Settings, error) {
 	return s.getFn(ctx)
+}
+
+func (s *reportCategoryReaderStub) List(ctx context.Context) ([]domain.Category, error) {
+	return s.listFn(ctx)
 }
 
 func (s *reportCapReaderStub) Show(ctx context.Context, monthKey string) (domain.MonthlyCap, error) {
@@ -107,6 +115,14 @@ func TestReportServiceGenerateAggregatesDeterministically(t *testing.T) {
 				return 4000, nil
 			},
 		},
+		WithReportCategoryReader(&reportCategoryReaderStub{
+			listFn: func(ctx context.Context) ([]domain.Category, error) {
+				return []domain.Category{
+					{ID: catOne, Name: "Food"},
+					{ID: catTwo, Name: "Transport"},
+				}, nil
+			},
+		}),
 	)
 	if err != nil {
 		t.Fatalf("new report service: %v", err)
@@ -177,6 +193,15 @@ func TestReportServiceGenerateAggregatesDeterministically(t *testing.T) {
 	}
 	if report.Spending.Categories[0].CategoryKey != domain.CategoryOrphanKey || report.Spending.Categories[0].TotalMinor != 3000 {
 		t.Fatalf("expected orphan bucket first in spending categories, got %+v", report.Spending.Categories[0])
+	}
+	if report.Spending.Categories[1].CategoryLabel != "Food" {
+		t.Fatalf("expected spending category label Food, got %+v", report.Spending.Categories[1])
+	}
+	if report.Spending.Categories[2].CategoryLabel != "Transport" {
+		t.Fatalf("expected spending category label Transport, got %+v", report.Spending.Categories[2])
+	}
+	if len(report.Earnings.Categories) != 2 || report.Earnings.Categories[1].CategoryLabel != "Food" {
+		t.Fatalf("expected earnings category label Food, got %+v", report.Earnings.Categories)
 	}
 
 	if len(report.CapStatus) != 1 {

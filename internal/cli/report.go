@@ -227,9 +227,11 @@ func newReportService(opts *RootOptions) (*service.ReportService, error) {
 		return nil, fmt.Errorf("cap service init: %w", err)
 	}
 
+	categoryRepo := sqlitestore.NewCategoryRepo(opts.db)
 	settingsRepo := sqlitestore.NewSettingsRepo(opts.db)
 	reportOptions := []service.ReportServiceOption{
 		service.WithReportSettingsReader(settingsRepo),
+		service.WithReportCategoryReader(categoryRepo),
 	}
 
 	reportSvc, err := service.NewReportService(entrySvc, capSvc, reportOptions...)

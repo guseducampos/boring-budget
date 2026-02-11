@@ -26,7 +26,7 @@
         {
           "category_id": 1,
           "category_key": "category:1",
-          "category_label": "Category 1",
+          "category_label": "Food",
           "currency_code": "USD",
           "total_minor": 250000
         }
@@ -50,7 +50,7 @@
         {
           "category_id": 1,
           "category_key": "category:1",
-          "category_label": "Category 1",
+          "category_label": "Food",
           "currency_code": "USD",
           "total_minor": 62000
         }

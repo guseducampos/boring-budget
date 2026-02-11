@@ -19,6 +19,7 @@ const (
 
 	CategoryOrphanKey   = "orphan"
 	CategoryOrphanLabel = "Orphan"
+	CategoryUnknownLabel = "Unknown Category"
 
 	DefaultOrphanCountThreshold       = 5
 	DefaultOrphanSpendingThresholdBPS = 500

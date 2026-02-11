@@ -3,6 +3,7 @@ package reporting
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"budgetto/internal/domain"
 )
@@ -24,7 +25,9 @@ type categoryCurrencyKey struct {
 	CurrencyCode string
 }
 
-func BuildAggregate(entries []domain.Entry, grouping string) (AggregateResult, error) {
+type CategoryLabelResolver func(categoryID int64) string
+
+func BuildAggregate(entries []domain.Entry, grouping string, categoryLabelResolver CategoryLabelResolver) (AggregateResult, error) {
 	earnByCurrency := map[string]int64{}
 	spendByCurrency := map[string]int64{}
 	earnGroups := map[groupCurrencyKey]int64{}
@@ -54,12 +57,12 @@ func BuildAggregate(entries []domain.Entry, grouping string) (AggregateResult, e
 		Earnings: domain.ReportSection{
 			ByCurrency: mapCurrencyTotals(earnByCurrency),
 			Groups:     mapGroupTotals(earnGroups),
-			Categories: mapCategoryTotals(earnCategories),
+			Categories: mapCategoryTotals(earnCategories, categoryLabelResolver),
 		},
 		Spending: domain.ReportSection{
 			ByCurrency: mapCurrencyTotals(spendByCurrency),
 			Groups:     mapGroupTotals(spendGroups),
-			Categories: mapCategoryTotals(spendCategories),
+			Categories: mapCategoryTotals(spendCategories, categoryLabelResolver),
 		},
 		Net: domain.ReportNet{
 			ByCurrency: mapNetTotals(earnByCurrency, spendByCurrency),
@@ -126,7 +129,7 @@ func mapGroupTotals(values map[groupCurrencyKey]int64) []domain.GroupTotal {
 	return output
 }
 
-func mapCategoryTotals(values map[categoryCurrencyKey]int64) []domain.CategoryTotal {
+func mapCategoryTotals(values map[categoryCurrencyKey]int64, categoryLabelResolver CategoryLabelResolver) []domain.CategoryTotal {
 	keys := make([]categoryCurrencyKey, 0, len(values))
 	for key := range values {
 		keys = append(keys, key)
@@ -149,7 +152,14 @@ func mapCategoryTotals(values map[categoryCurrencyKey]int64) []domain.CategoryTo
 			categoryID := key.CategoryID
 			item.CategoryID = &categoryID
 			item.CategoryKey = fmt.Sprintf("category:%d", key.CategoryID)
-			item.CategoryLabel = fmt.Sprintf("Category %d", key.CategoryID)
+			label := ""
+			if categoryLabelResolver != nil {
+				label = strings.TrimSpace(categoryLabelResolver(key.CategoryID))
+			}
+			if label == "" {
+				label = domain.CategoryUnknownLabel
+			}
+			item.CategoryLabel = label
 		} else {
 			item.CategoryKey = domain.CategoryOrphanKey
 			item.CategoryLabel = domain.CategoryOrphanLabel

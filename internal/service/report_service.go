@@ -21,11 +21,16 @@ type ReportCapReader interface {
 	ExpenseTotalByMonthAndCurrency(ctx context.Context, monthKey, currencyCode string) (int64, error)
 }
 
+type ReportCategoryReader interface {
+	List(ctx context.Context) ([]domain.Category, error)
+}
+
 type ReportService struct {
 	entryReader    ReportEntryReader
 	capReader      ReportCapReader
 	fxConverter    ReportFXConverter
 	settingsReader ReportSettingsReader
+	categoryReader ReportCategoryReader
 }
 
 type ReportRequest struct {
@@ -61,6 +66,12 @@ func WithReportFXConverter(converter ReportFXConverter) ReportServiceOption {
 func WithReportSettingsReader(reader ReportSettingsReader) ReportServiceOption {
 	return func(s *ReportService) {
 		s.settingsReader = reader
+	}
+}
+
+func WithReportCategoryReader(reader ReportCategoryReader) ReportServiceOption {
+	return func(s *ReportService) {
+		s.categoryReader = reader
 	}
 }
 
@@ -121,7 +132,12 @@ func (s *ReportService) Generate(ctx context.Context, req ReportRequest) (Report
 
 	reporting.SortEntriesDeterministic(entries)
 
-	aggregate, err := reporting.BuildAggregate(entries, grouping)
+	categoryLabelResolver, err := s.buildCategoryLabelResolver(ctx, entries)
+	if err != nil {
+		return ReportResult{}, err
+	}
+
+	aggregate, err := reporting.BuildAggregate(entries, grouping, categoryLabelResolver)
 	if err != nil {
 		return ReportResult{}, err
 	}
@@ -196,6 +212,42 @@ func (s *ReportService) Generate(ctx context.Context, req ReportRequest) (Report
 	warnings = append(warnings, conversionWarnings...)
 
 	return ReportResult{Report: report, Warnings: warnings}, nil
+}
+
+func (s *ReportService) buildCategoryLabelResolver(ctx context.Context, entries []domain.Entry) (reporting.CategoryLabelResolver, error) {
+	categoryIDs := map[int64]struct{}{}
+	for _, entry := range entries {
+		if entry.CategoryID != nil {
+			categoryIDs[*entry.CategoryID] = struct{}{}
+		}
+	}
+
+	if len(categoryIDs) == 0 {
+		return nil, nil
+	}
+
+	categoryNames := map[int64]string{}
+	if s.categoryReader != nil {
+		categories, err := s.categoryReader.List(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, category := range categories {
+			if _, needed := categoryIDs[category.ID]; !needed {
+				continue
+			}
+			if trimmedName := strings.TrimSpace(category.Name); trimmedName != "" {
+				categoryNames[category.ID] = trimmedName
+			}
+		}
+	}
+
+	return func(categoryID int64) string {
+		if name, ok := categoryNames[categoryID]; ok {
+			return name
+		}
+		return domain.CategoryUnknownLabel
+	}, nil
 }
 
 func (s *ReportService) buildConvertedSummary(ctx context.Context, entries []domain.Entry, targetCurrency string) (domain.ConvertedSummary, bool, error) {
