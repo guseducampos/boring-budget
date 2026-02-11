@@ -10,10 +10,10 @@ import (
 )
 
 type capRepoStub struct {
-	setFn                     func(ctx context.Context, input domain.CapSetInput) (domain.MonthlyCap, domain.MonthlyCapChange, error)
-	getByMonthFn              func(ctx context.Context, monthKey string) (domain.MonthlyCap, error)
-	listChangesByMonthFn      func(ctx context.Context, monthKey string) ([]domain.MonthlyCapChange, error)
-	expenseTotalByMonthCurFn  func(ctx context.Context, monthKey, currencyCode string) (int64, error)
+	setFn                    func(ctx context.Context, input domain.CapSetInput) (domain.MonthlyCap, domain.MonthlyCapChange, error)
+	getByMonthFn             func(ctx context.Context, monthKey string) (domain.MonthlyCap, error)
+	listChangesByMonthFn     func(ctx context.Context, monthKey string) ([]domain.MonthlyCapChange, error)
+	expenseTotalByMonthCurFn func(ctx context.Context, monthKey, currencyCode string) (int64, error)
 }
 
 func (s *capRepoStub) Set(ctx context.Context, input domain.CapSetInput) (domain.MonthlyCap, domain.MonthlyCapChange, error) {
@@ -132,9 +132,11 @@ func TestCapServiceExpenseTotalByMonthAndCurrencyNormalizesInput(t *testing.T) {
 	var receivedCurrency string
 
 	svc, err := NewCapService(&capRepoStub{
-		setFn:                 func(context.Context, domain.CapSetInput) (domain.MonthlyCap, domain.MonthlyCapChange, error) { return domain.MonthlyCap{}, domain.MonthlyCapChange{}, nil },
-		getByMonthFn:          func(context.Context, string) (domain.MonthlyCap, error) { return domain.MonthlyCap{}, nil },
-		listChangesByMonthFn:  func(context.Context, string) ([]domain.MonthlyCapChange, error) { return nil, nil },
+		setFn: func(context.Context, domain.CapSetInput) (domain.MonthlyCap, domain.MonthlyCapChange, error) {
+			return domain.MonthlyCap{}, domain.MonthlyCapChange{}, nil
+		},
+		getByMonthFn:         func(context.Context, string) (domain.MonthlyCap, error) { return domain.MonthlyCap{}, nil },
+		listChangesByMonthFn: func(context.Context, string) ([]domain.MonthlyCapChange, error) { return nil, nil },
 		expenseTotalByMonthCurFn: func(ctx context.Context, monthKey, currencyCode string) (int64, error) {
 			receivedMonth = monthKey
 			receivedCurrency = currencyCode
@@ -164,9 +166,11 @@ func TestCapServiceSetRejectsInvalidMonth(t *testing.T) {
 	t.Parallel()
 
 	svc, err := NewCapService(&capRepoStub{
-		setFn:                 func(context.Context, domain.CapSetInput) (domain.MonthlyCap, domain.MonthlyCapChange, error) { return domain.MonthlyCap{}, domain.MonthlyCapChange{}, nil },
-		getByMonthFn:          func(context.Context, string) (domain.MonthlyCap, error) { return domain.MonthlyCap{}, nil },
-		listChangesByMonthFn:  func(context.Context, string) ([]domain.MonthlyCapChange, error) { return nil, nil },
+		setFn: func(context.Context, domain.CapSetInput) (domain.MonthlyCap, domain.MonthlyCapChange, error) {
+			return domain.MonthlyCap{}, domain.MonthlyCapChange{}, nil
+		},
+		getByMonthFn:         func(context.Context, string) (domain.MonthlyCap, error) { return domain.MonthlyCap{}, nil },
+		listChangesByMonthFn: func(context.Context, string) ([]domain.MonthlyCapChange, error) { return nil, nil },
 		expenseTotalByMonthCurFn: func(context.Context, string, string) (int64, error) {
 			return 0, nil
 		},

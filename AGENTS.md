@@ -217,3 +217,9 @@ Do not add unrelated features without updating:
   - migration/schema changes
   - notable fixes
 - Update changelog as part of the same delivery cycle before marking work complete.
+
+## 18) Go Formatting Policy
+
+- Use the default Go formatter (`gofmt`) for all Go code.
+- Run `gofmt` on every edited `.go` file before commit.
+- Do not introduce alternative formatting standards/tools that conflict with `gofmt`.

@@ -17,8 +17,8 @@ const (
 	ReportGroupingWeek  = "week"
 	ReportGroupingMonth = "month"
 
-	CategoryOrphanKey   = "orphan"
-	CategoryOrphanLabel = "Orphan"
+	CategoryOrphanKey    = "orphan"
+	CategoryOrphanLabel  = "Orphan"
 	CategoryUnknownLabel = "Unknown Category"
 
 	DefaultOrphanCountThreshold       = 5

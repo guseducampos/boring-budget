@@ -214,6 +214,7 @@ The format follows a lightweight Keep a Changelog style.
   - added MIT `LICENSE`
 - README now includes an optimized hero image asset (`docs/assets/boring-budget-hero.webp`) for richer project presentation.
 - README hero image refreshed with a newer optimized asset variant.
+- Go codebase formatted with default `gofmt`, and `AGENTS.md` now explicitly requires `gofmt` for all edited Go files.
 - Report category label resolution now prefers ID-targeted category loading (`ListByIDs`) to avoid full category-table scans.
 - `data restore` now uses command context, validates post-restore DB integrity, and rolls back to a pre-restore snapshot when validation fails.
 - `docs/contracts/*.json` examples are now normalized to the same canonical payloads asserted by CLI golden tests.
