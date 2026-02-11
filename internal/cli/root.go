@@ -90,6 +90,7 @@ func NewRootCmd() *cobra.Command {
 		NewCategoryCmd(opts),
 		NewLabelCmd(opts),
 		NewEntryCmd(opts),
+		NewCapCmd(opts),
 	)
 
 	return cmd

@@ -127,6 +127,64 @@ func TestEntryCommandJSONLifecycleAndFilters(t *testing.T) {
 	}
 }
 
+func TestEntryCommandJSONAddIncludesCapExceededWarning(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	if _, err := db.ExecContext(context.Background(), `
+		INSERT INTO monthly_caps (month_key, amount_minor, currency_code)
+		VALUES ('2026-02', 5000, 'USD');
+	`); err != nil {
+		t.Fatalf("insert monthly cap: %v", err)
+	}
+
+	payload := executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "expense",
+		"--amount-minor", "6200",
+		"--currency", "USD",
+		"--date", "2026-02-10",
+	})
+	if ok, _ := payload["ok"].(bool); !ok {
+		t.Fatalf("expected ok=true payload=%v", payload)
+	}
+
+	warnings := mustAnySlice(t, payload["warnings"])
+	if len(warnings) != 1 {
+		t.Fatalf("expected exactly one warning, got %d (%v)", len(warnings), warnings)
+	}
+
+	firstWarning := mustMap(t, warnings[0])
+	if firstWarning["code"].(string) != "CAP_EXCEEDED" {
+		t.Fatalf("expected CAP_EXCEEDED warning, got %v", firstWarning["code"])
+	}
+	if firstWarning["message"].(string) != "Expense saved, monthly cap exceeded." {
+		t.Fatalf("unexpected warning message: %v", firstWarning["message"])
+	}
+
+	details := mustMap(t, firstWarning["details"])
+	if details["month_key"].(string) != "2026-02" {
+		t.Fatalf("expected warning month_key 2026-02, got %v", details["month_key"])
+	}
+
+	capAmount := mustMap(t, details["cap_amount"])
+	if int64(capAmount["amount_minor"].(float64)) != 5000 {
+		t.Fatalf("expected cap_amount amount_minor 5000, got %v", capAmount["amount_minor"])
+	}
+
+	newSpendTotal := mustMap(t, details["new_spend_total"])
+	if int64(newSpendTotal["amount_minor"].(float64)) != 6200 {
+		t.Fatalf("expected new_spend_total amount_minor 6200, got %v", newSpendTotal["amount_minor"])
+	}
+
+	overspendAmount := mustMap(t, details["overspend_amount"])
+	if int64(overspendAmount["amount_minor"].(float64)) != 1200 {
+		t.Fatalf("expected overspend_amount amount_minor 1200, got %v", overspendAmount["amount_minor"])
+	}
+}
+
 func TestEntryCommandJSONInvalidCurrencyCode(t *testing.T) {
 	t.Parallel()
 

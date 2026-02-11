@@ -91,12 +91,15 @@ func newEntryAddCmd(opts *RootOptions) *cobra.Command {
 				return printEntryError(cmd, entryOutputFormat(opts), err)
 			}
 
-			entry, err := svc.Add(cmd.Context(), input)
+			result, err := svc.AddWithWarnings(cmd.Context(), input)
 			if err != nil {
 				return printEntryError(cmd, entryOutputFormat(opts), err)
 			}
 
-			env := output.NewSuccessEnvelope(map[string]any{"entry": entry}, nil)
+			env := output.NewSuccessEnvelope(
+				map[string]any{"entry": result.Entry},
+				toOutputWarnings(result.Warnings),
+			)
 			return output.Print(cmd.OutOrStdout(), entryOutputFormat(opts), env)
 		},
 	}
@@ -203,13 +206,31 @@ func newEntryService(opts *RootOptions) (*service.EntryService, error) {
 		}
 	}
 
-	repo := sqlitestore.NewEntryRepo(opts.db)
-	svc, err := service.NewEntryService(repo)
+	entryRepo := sqlitestore.NewEntryRepo(opts.db)
+	capRepo := sqlitestore.NewCapRepo(opts.db)
+
+	svc, err := service.NewEntryService(entryRepo, service.WithEntryCapLookup(capRepo))
 	if err != nil {
 		return nil, fmt.Errorf("entry service init: %w", err)
 	}
 
 	return svc, nil
+}
+
+func toOutputWarnings(warnings []domain.Warning) []output.WarningPayload {
+	if len(warnings) == 0 {
+		return []output.WarningPayload{}
+	}
+
+	out := make([]output.WarningPayload, 0, len(warnings))
+	for _, warning := range warnings {
+		out = append(out, output.WarningPayload{
+			Code:    warning.Code,
+			Message: warning.Message,
+			Details: warning.Details,
+		})
+	}
+	return out
 }
 
 func buildEntryAddInput(cmd *cobra.Command, flags *entryAddFlags) (domain.EntryAddInput, error) {
