@@ -22,6 +22,7 @@ If there is conflict, `TECHNICAL_BLUEPRINT.md` wins for engineering decisions.
 - Database: SQLite
 - Storage mode: local-first
 - Migrations: Goose (`github.com/pressly/goose/v3`)
+- Query layer: SQLC (`github.com/sqlc-dev/sqlc`)
 
 ## 3) Architecture Rules
 
@@ -31,6 +32,8 @@ Use this package layout:
 - `internal/service` (use-cases)
 - `internal/domain` (business rules/entities)
 - `internal/store/sqlite` (queries/repos)
+  - `internal/store/sqlite/queries` (SQL source for SQLC)
+  - `internal/store/sqlite/sqlc` (generated SQLC code)
 - `internal/reporting` (summaries/grouping)
 - `internal/fx` (exchange-rate provider integration)
 - `internal/config` (onboarding/user settings)
@@ -122,6 +125,7 @@ Maintain auditability:
 
 - Enable SQLite WAL mode.
 - Use Goose for all schema migrations (no custom/raw migration runner logic).
+- Use SQLC for repository query execution (no hand-written CRUD SQL strings in repos).
 - Use DB transactions for all multi-step writes.
 - Serialize writes when needed for concurrent agent operations.
 - Add indexes for reporting/filter hot paths (date/type/category/label joins).
