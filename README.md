@@ -61,6 +61,7 @@ go run ./cmd/budgetto label delete 1
 - Entries:
 ```bash
 go run ./cmd/budgetto entry add --type expense --amount-minor 1200 --currency USD --date 2026-02-11 --category-id 1 --label-id 2 --note "Lunch"
+go run ./cmd/budgetto entry update 1 --amount-minor 1500 --currency EUR --clear-category --clear-labels --note "Updated"
 go run ./cmd/budgetto entry list --type expense --from 2026-02-01 --to 2026-02-28 --label-id 2 --label-mode any
 go run ./cmd/budgetto entry delete 1
 ```

@@ -82,6 +82,13 @@ The format follows a lightweight Keep a Changelog style.
 - Data portability implementation:
   - `internal/service/portability_service.go`
   - `internal/cli/data.go`
+- Entry update + exit code enforcement:
+  - `internal/cli/output/exit_code.go`
+  - `cmd/budgetto/main.go`
+  - `internal/cli/entry.go`
+  - `internal/service/entry_service.go`
+  - `internal/store/sqlite/entry_repo.go`
+  - `internal/store/sqlite/queries/entry.sql`
 - Reporting architecture extraction:
   - `internal/reporting/aggregate.go`
 - Auditability enforcement:
@@ -99,6 +106,11 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/store/sqlite/settings_repo_test.go`
 - Audit trigger tests:
   - `internal/store/sqlite/audit_triggers_test.go`
+- Entry update and exit-code tests:
+  - `internal/cli/entry_test.go`
+  - `internal/service/entry_service_test.go`
+  - `internal/store/sqlite/entry_repo_test.go`
+  - `internal/cli/output/exit_code_test.go`
 - SQLC entry query layer:
   - `internal/store/sqlite/queries/entry.sql`
   - `internal/store/sqlite/sqlc/entry.sql.go`
@@ -136,6 +148,8 @@ The format follows a lightweight Keep a Changelog style.
 - Root CLI now registers `setup` and `data` command groups.
 - Report aggregation logic moved under `internal/reporting` to match architecture layout rules.
 - DB-level triggers now write key create/update/delete events into `audit_events` for categories/labels/entries/caps/settings.
+- Added strict process exit-code mapping from JSON envelope error codes (`INVALID_ARGUMENT`→2, `NOT_FOUND`→3, etc.).
+- Added `entry update` command with partial updates and clear/set semantics for category, labels, and note.
 
 ### Verified
 
@@ -151,6 +165,7 @@ The format follows a lightweight Keep a Changelog style.
 - `go test ./...` covers FX conversion logic and FX snapshot repository behavior.
 - End-to-end command checks pass for `setup init|show` and `data export|import|backup|restore`.
 - Migration and integration checks pass for audit trigger writes to `audit_events`.
+- Binary-level validation confirms non-zero mapped exit codes on command failures.
 
 ## Progress Notes
 

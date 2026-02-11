@@ -27,6 +27,7 @@ Rules:
 ## Files
 
 - `entry-add.json`: `entry add --output json` success contract with overspend warning.
+- `entry-update.json`: `entry update --output json` success contract.
 - `cap-set.json`: `cap set --output json` success contract with cap history change.
 - `report-monthly.json`: `report monthly --output json` success contract.
 - `setup-init.json`: `setup init --output json` onboarding success contract.

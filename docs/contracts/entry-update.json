@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "data": {
+    "entry": {
+      "id": 1,
+      "type": "income",
+      "amount_minor": 3500,
+      "currency_code": "EUR",
+      "transaction_date_utc": "2026-02-05T00:00:00Z",
+      "category_id": 2,
+      "label_ids": [
+        4
+      ],
+      "note": "after",
+      "created_at_utc": "2026-02-01T00:00:00Z",
+      "updated_at_utc": "2026-02-05T00:00:00Z"
+    }
+  },
+  "warnings": [],
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "2026-02-11T00:00:00Z"
+  }
+}
