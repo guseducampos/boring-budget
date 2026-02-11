@@ -1,117 +1,260 @@
-# Budgetto
+# boring-budget
 
-Agent-friendly personal budgeting CLI built with Go and SQLite.
+`boring-budget` is a local-first budgeting CLI built with Go + SQLite.
+your boring budget tracking for you and your agent.
 
-## Overview
+It is designed for two audiences:
+- Humans who want a practical command-line budgeting tool.
+- Agents/LLMs that need deterministic JSON contracts and stable automation behavior.
 
-Budgetto is a local-first CLI for tracking:
-- expenses and earnings
-- categories and labels
-- monthly caps and overspend alerts
-- reporting by date range, month, bimonthly, and quarterly presets
+## Why boring-budget
 
-The project is designed for both humans and LLM agents, with deterministic command behavior and structured JSON output contracts.
+- Track both expenses and earnings.
+- Organize transactions with categories and multiple labels.
+- Enforce monthly spending caps with non-blocking overspend warnings.
+- Generate reports across range/monthly/bimonthly/quarterly scopes.
+- Support multi-currency reporting and optional FX-converted summaries.
+- Keep data local by default (`$HOME/.boring-budget/boring-budget.db`).
 
-## Project Docs
+## Core Principles
 
-- Product plan: `docs/PRODUCT_PLAN.md`
-- Technical blueprint: `docs/TECHNICAL_BLUEPRINT.md`
-- Agent contracts: `docs/contracts/README.md`
-- Contributor/agent rules: `AGENTS.md`
-
-## Key Principles
-
-- Money is stored in integer minor units (`amount_minor`) with `currency_code`.
-- Timestamps are stored in UTC and rendered in user-configured timezone.
-- Overspend checks warn but do not block writes.
+- Money is stored in minor units only (`amount_minor`) plus `currency_code`.
+- Timestamps are stored in UTC.
+- Human output can render `*_utc` values in configured timezone.
 - Deletes are non-destructive where possible.
-- Core commands support both human and JSON output modes.
+- Core commands support both `--output human` and `--output json`.
+- JSON shape and ordering are contract-driven and regression tested.
+
+## Feature Summary
+
+- Category CRUD (`add|list|rename|delete`) with orphaning behavior on delete.
+- Label CRUD (`add|list|rename|delete`) with link detachment on delete.
+- Entry CRUD (`add|update|list|delete`) with optional category, labels, and note.
+- Cap management (`set|show|history`) with cap-change history.
+- Overspend policy: allow write + emit warning.
+- Reports (`range|monthly|bimonthly|quarterly`) with group-by (`day|week|month`).
+- Balance views (`lifetime|range|both`).
+- FX conversion via Frankfurter/ECB with persisted rate snapshots.
+- Onboarding setup (`setup init|show`).
+- Portability (`data export|import|backup|restore`) for JSON/CSV + full DB backup.
+- Hardened restore path with integrity validation + rollback snapshot strategy.
+
+## Installation
+
+### Prerequisites
+
+- Go `1.24+`
+
+### Build/install
+
+```bash
+go install ./cmd/boring-budget
+```
+
+Or run directly:
+
+```bash
+go run ./cmd/boring-budget --help
+```
 
 ## Quick Start
 
-1. Run in human mode:
+### 1) Initialize settings
+
 ```bash
-go run ./cmd/budgetto --output human
-```
-2. Run in JSON mode:
-```bash
-go run ./cmd/budgetto --output json
-```
-3. Optional explicit paths:
-```bash
-go run ./cmd/budgetto --db-path "$HOME/.budgetto/budgetto.db" --migrations-dir "./migrations"
+go run ./cmd/boring-budget setup init \
+  --default-currency USD \
+  --timezone America/New_York \
+  --opening-balance-minor 100000 \
+  --opening-balance-date 2026-02-01 \
+  --month-cap-minor 50000 \
+  --month-cap-month 2026-02
 ```
 
-## Current Commands
+### 2) Create categories and labels
 
-- Categories:
 ```bash
-go run ./cmd/budgetto category add "Food"
-go run ./cmd/budgetto category list
-go run ./cmd/budgetto category rename 1 "Groceries"
-go run ./cmd/budgetto category delete 1
-```
-- Labels:
-```bash
-go run ./cmd/budgetto label add "Recurring"
-go run ./cmd/budgetto label list
-go run ./cmd/budgetto label rename 1 "Fixed"
-go run ./cmd/budgetto label delete 1
-```
-- Entries:
-```bash
-go run ./cmd/budgetto entry add --type expense --amount-minor 1200 --currency USD --date 2026-02-11 --category-id 1 --label-id 2 --note "Lunch"
-go run ./cmd/budgetto entry update 1 --amount-minor 1500 --currency EUR --clear-category --clear-labels --note "Updated"
-go run ./cmd/budgetto entry list --type expense --from 2026-02-01 --to 2026-02-28 --label-id 2 --label-mode any
-go run ./cmd/budgetto entry delete 1
-```
-- Caps:
-```bash
-go run ./cmd/budgetto cap set --month 2026-02 --amount-minor 50000 --currency USD
-go run ./cmd/budgetto cap show --month 2026-02
-go run ./cmd/budgetto cap history --month 2026-02
-```
-- Reports:
-```bash
-go run ./cmd/budgetto report range --from 2026-02-01 --to 2026-02-28 --group-by day
-go run ./cmd/budgetto report monthly --month 2026-02 --group-by month
-go run ./cmd/budgetto report bimonthly --month 2026-02 --group-by week
-go run ./cmd/budgetto report quarterly --month 2026-01 --group-by month
-go run ./cmd/budgetto report monthly --month 2026-02 --group-by month --convert-to EUR
-```
-- Balance:
-```bash
-go run ./cmd/budgetto balance show --scope both --from 2026-02-01 --to 2026-02-28
-go run ./cmd/budgetto balance show --scope lifetime
-go run ./cmd/budgetto balance show --scope range --from 2026-02-01 --to 2026-02-28 --convert-to USD
-```
-- Setup:
-```bash
-go run ./cmd/budgetto setup init --default-currency USD --timezone UTC --opening-balance-minor 100000 --month-cap-minor 50000
-go run ./cmd/budgetto setup show
-```
-- Data Portability:
-```bash
-go run ./cmd/budgetto data export --resource entries --format json --file ./backup/entries.json --from 2026-01-01 --to 2026-12-31
-go run ./cmd/budgetto data export --resource report --format json --file ./backup/report-2026-02.json --report-scope monthly --report-month 2026-02 --report-group-by month
-go run ./cmd/budgetto data import --format csv --file ./seed/entries.csv --idempotent
-go run ./cmd/budgetto data backup --file ./backup/budgetto.db
-go run ./cmd/budgetto data restore --file ./backup/budgetto.db
+go run ./cmd/boring-budget category add "Food"
+go run ./cmd/boring-budget label add "Recurring"
 ```
 
-## Current Status
+### 3) Add entries
 
-Implemented milestones:
-1. Go module and Cobra CLI scaffold
-2. SQLite bootstrap with WAL + foreign keys
-3. Migration runner and initial schema
-4. Initial agent contract docs (JSON envelope examples, exit codes, error catalog)
-5. Category CRUD (`add|list|rename|delete`) with non-destructive delete semantics
-6. Label CRUD (`add|list|rename|delete`) with non-destructive link detachment on delete
-7. Entry CRUD (`add|list|delete`) with optional category/labels and combined list filters
-8. Monthly cap management (`set|show|history`) and `CAP_EXCEEDED` warning on `entry add`
-9. Reporting command group (`range|monthly|bimonthly|quarterly`) with grouping/filter options
-10. Balance command group (`show`) with `lifetime|range|both` views
-11. FX conversion (`--convert-to`) for report and balance with persisted snapshot rates
-12. Setup command group (`init|show`) for onboarding settings + optional opening balance/current month cap
-13. Data command group (`export|import|backup|restore`) for CSV/JSON portability and full SQLite snapshot lifecycle
+```bash
+go run ./cmd/boring-budget entry add \
+  --type income \
+  --amount-minor 350000 \
+  --currency USD \
+  --date 2026-02-01 \
+  --note "Salary"
+
+go run ./cmd/boring-budget entry add \
+  --type expense \
+  --amount-minor 1250 \
+  --currency USD \
+  --date 2026-02-11 \
+  --category-id 1 \
+  --label-id 1 \
+  --note "Lunch"
+```
+
+### 4) Run reports
+
+```bash
+go run ./cmd/boring-budget report monthly --month 2026-02 --group-by month
+go run ./cmd/boring-budget balance show --scope both --from 2026-02-01 --to 2026-02-28
+```
+
+## Command Guide
+
+### Global flags
+
+```bash
+--output human|json
+--timezone <IANA TZ>
+--db-path <sqlite file>
+--migrations-dir <path>
+```
+
+### Categories
+
+```bash
+boring-budget category add <name>
+boring-budget category list
+boring-budget category rename <id> <new-name>
+boring-budget category delete <id>
+```
+
+### Labels
+
+```bash
+boring-budget label add <name>
+boring-budget label list
+boring-budget label rename <id> <new-name>
+boring-budget label delete <id>
+```
+
+### Entries
+
+```bash
+boring-budget entry add --type income|expense --amount-minor <int> --currency <ISO> --date <RFC3339|YYYY-MM-DD> [--category-id <id>] [--label-id <id>] [--note <text>]
+boring-budget entry update <id> [--type ...] [--amount-minor ...] [--currency ...] [--date ...] [--category-id <id>|--clear-category] [--label-id <id>|--clear-labels] [--note <text>|--clear-note]
+boring-budget entry list [--type ...] [--category-id ...] [--from ...] [--to ...] [--label-id ...] [--label-mode any|all|none]
+boring-budget entry delete <id>
+```
+
+Note: `--note` is an optional description field for entries.
+
+### Caps
+
+```bash
+boring-budget cap set --month YYYY-MM --amount-minor <int> --currency <ISO>
+boring-budget cap show --month YYYY-MM
+boring-budget cap history --month YYYY-MM
+```
+
+### Reports
+
+```bash
+boring-budget report range --from <date> --to <date> [--group-by day|week|month] [--category-id <id>] [--label-id <id>] [--label-mode any|all|none] [--convert-to <ISO>]
+boring-budget report monthly --month YYYY-MM [...same optional filters...]
+boring-budget report bimonthly --month YYYY-MM [...same optional filters...]
+boring-budget report quarterly --month YYYY-MM [...same optional filters...]
+```
+
+### Balance
+
+```bash
+boring-budget balance show --scope lifetime|range|both [--from <date>] [--to <date>] [--category-id <id>] [--label-id <id>] [--label-mode any|all|none] [--convert-to <ISO>]
+```
+
+### Setup
+
+```bash
+boring-budget setup init --default-currency <ISO> --timezone <IANA>
+boring-budget setup show
+```
+
+### Data portability
+
+```bash
+boring-budget data export --resource entries --format json|csv --file <path> [--from <date>] [--to <date>]
+boring-budget data export --resource report --format json|csv --file <path> --report-scope range|monthly|bimonthly|quarterly [scope flags] [filters]
+boring-budget data import --format json|csv --file <path> [--idempotent]
+boring-budget data backup --file <path>
+boring-budget data restore --file <path>
+```
+
+Restore details:
+- Uses command context for cancellation.
+- Validates DB with `PRAGMA integrity_check` before success.
+- Rolls back to pre-restore snapshot if validation fails.
+
+## Agent/LLM Integration
+
+`boring-budget` is contract-first for JSON mode.
+
+### JSON envelope
+
+```json
+{
+  "ok": true,
+  "data": {},
+  "warnings": [],
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "<timestamp_utc>"
+  }
+}
+```
+
+Contract docs and examples:
+- `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/docs/contracts/README.md`
+- `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/docs/contracts/errors.md`
+- `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/docs/contracts/exit-codes.md`
+
+## Architecture
+
+Primary package layout:
+- `cmd/boring-budget`: CLI entrypoint
+- `internal/cli`: Cobra commands, input parsing, rendering
+- `internal/service`: use-case orchestration
+- `internal/domain`: entities and business invariants
+- `internal/store/sqlite`: SQLC-backed repositories
+- `internal/reporting`: deterministic aggregation logic
+- `internal/fx`: exchange-rate provider + converter
+- `internal/config`: local config path defaults
+- `migrations`: Goose migrations
+- `docs/contracts`: agent-facing contract examples
+
+## Development
+
+### Test
+
+```bash
+go test ./...
+```
+
+### Important implementation notes
+
+- Migrations are managed with Goose.
+- Repository query layer uses SQLC.
+- JSON contract determinism is guarded by golden tests and docs-sync tests.
+- Project-level implementation rules live in `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/AGENTS.md`.
+
+## Contributing
+
+Issues and PRs are welcome.
+
+Before opening a PR:
+- run `go test ./...`
+- keep commits atomic
+- update `CHANGELOG.md` for significant changes
+- update/add contracts under `docs/contracts` when JSON behavior changes
+
+## Documentation
+
+- Product plan: `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/docs/PRODUCT_PLAN.md`
+- Technical blueprint: `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/docs/TECHNICAL_BLUEPRINT.md`
+- Changelog: `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/CHANGELOG.md`

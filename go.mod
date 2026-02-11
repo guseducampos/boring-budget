@@ -1,4 +1,4 @@
-module budgetto
+module boring-budget
 
 go 1.24.0
 

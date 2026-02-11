@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"budgetto/internal/domain"
+	"boring-budget/internal/domain"
 )
 
 type AggregateResult struct {

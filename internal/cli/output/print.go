@@ -43,7 +43,7 @@ func printHuman(w io.Writer, envelope Envelope) error {
 		status = "ERROR"
 	}
 
-	if _, err := fmt.Fprintf(w, "[%s] budgetto\n", status); err != nil {
+	if _, err := fmt.Fprintf(w, "[%s] boring-budget\n", status); err != nil {
 		return err
 	}
 

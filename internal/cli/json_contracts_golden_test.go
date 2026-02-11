@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"budgetto/internal/cli/output"
+	"boring-budget/internal/cli/output"
 )
 
 const updateJSONContractsGoldenEnv = "BUDGETTO_UPDATE_GOLDEN"

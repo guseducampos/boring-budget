@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"budgetto/internal/cli/output"
+	"boring-budget/internal/cli/output"
 )
 
 func TestCapCommandJSONSetShowHistory(t *testing.T) {
@@ -182,7 +182,7 @@ func TestCapCommandHumanOutput(t *testing.T) {
 		"--currency", "USD",
 	})
 
-	if !strings.Contains(out, "[OK] budgetto") {
+	if !strings.Contains(out, "[OK] boring-budget") {
 		t.Fatalf("expected human output status line, got %q", out)
 	}
 	if !strings.Contains(out, "\"amount_minor\": 40000") {

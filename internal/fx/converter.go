@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"budgetto/internal/domain"
+	"boring-budget/internal/domain"
 )
 
 type RateQuote struct {

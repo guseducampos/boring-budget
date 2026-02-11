@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"budgetto/internal/cli/output"
-	sqlitestore "budgetto/internal/store/sqlite"
+	"boring-budget/internal/cli/output"
+	sqlitestore "boring-budget/internal/store/sqlite"
 )
 
 func TestLabelCommandJSONLifecycle(t *testing.T) {
@@ -83,7 +83,7 @@ func TestLabelCommandHumanOutput(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	out := executeLabelCmdRaw(t, db, output.FormatHuman, []string{"add", "groceries"})
-	if !strings.Contains(out, "[OK] budgetto") {
+	if !strings.Contains(out, "[OK] boring-budget") {
 		t.Fatalf("expected human output status line, got %q", out)
 	}
 	if !strings.Contains(out, "\"name\": \"groceries\"") {

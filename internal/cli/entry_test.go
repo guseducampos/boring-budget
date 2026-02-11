@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"budgetto/internal/cli/output"
+	"boring-budget/internal/cli/output"
 )
 
 func TestEntryCommandJSONLifecycleAndFilters(t *testing.T) {
@@ -395,7 +395,7 @@ func TestEntryCommandHumanOutput(t *testing.T) {
 		"--date", "2026-02-01",
 	})
 
-	if !strings.Contains(out, "[OK] budgetto") {
+	if !strings.Contains(out, "[OK] boring-budget") {
 		t.Fatalf("expected human output status line, got %q", out)
 	}
 	if !strings.Contains(out, "\"amount_minor\": 2500") {

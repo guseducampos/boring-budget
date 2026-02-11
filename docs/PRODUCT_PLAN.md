@@ -1,4 +1,4 @@
-# Budgetto CLI Product Plan (v3)
+# boring-budget CLI Product Plan (v3)
 
 ## 1) Product Vision
 

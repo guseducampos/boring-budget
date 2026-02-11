@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"budgetto/internal/domain"
+	"boring-budget/internal/domain"
 )
 
 func TestSettingsRepoUpsertAndGet(t *testing.T) {

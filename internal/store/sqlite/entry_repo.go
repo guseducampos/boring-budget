@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"budgetto/internal/domain"
-	"budgetto/internal/ports"
-	queries "budgetto/internal/store/sqlite/sqlc"
+	"boring-budget/internal/domain"
+	"boring-budget/internal/ports"
+	queries "boring-budget/internal/store/sqlite/sqlc"
 )
 
 type EntryRepo struct {

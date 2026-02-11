@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"budgetto/internal/cli/output"
-	"budgetto/internal/domain"
-	"budgetto/internal/service"
-	sqlitestore "budgetto/internal/store/sqlite"
+	"boring-budget/internal/cli/output"
+	"boring-budget/internal/domain"
+	"boring-budget/internal/service"
+	sqlitestore "boring-budget/internal/store/sqlite"
 	"github.com/spf13/cobra"
 )
 

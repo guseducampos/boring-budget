@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"testing"
 
-	"budgetto/internal/domain"
+	"boring-budget/internal/domain"
 )
 
 func TestCapRepoSetShowAndHistory(t *testing.T) {

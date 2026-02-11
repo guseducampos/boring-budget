@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"testing"
 
-	"budgetto/internal/domain"
-	sqlcqueries "budgetto/internal/store/sqlite/sqlc"
+	"boring-budget/internal/domain"
+	sqlcqueries "boring-budget/internal/store/sqlite/sqlc"
 )
 
 func TestEntryRepoAddListDeleteWithCategoryAndLabels(t *testing.T) {

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file defines implementation rules for agents and contributors working on `budgetto`.
+This file defines implementation rules for agents and contributors working on `boring-budget`.
 
 ## 1) Mission
 
@@ -27,7 +27,7 @@ If there is conflict, `TECHNICAL_BLUEPRINT.md` wins for engineering decisions.
 ## 3) Architecture Rules
 
 Use this package layout:
-- `cmd/budgetto` (entrypoint)
+- `cmd/boring-budget` (entrypoint)
 - `internal/cli` (commands, flags, rendering)
 - `internal/service` (use-cases)
 - `internal/domain` (business rules/entities)

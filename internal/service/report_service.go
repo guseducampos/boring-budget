@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"budgetto/internal/domain"
-	"budgetto/internal/reporting"
+	"boring-budget/internal/domain"
+	"boring-budget/internal/reporting"
 )
 
 type ReportEntryReader interface {

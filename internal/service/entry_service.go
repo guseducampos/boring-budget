@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"budgetto/internal/domain"
-	"budgetto/internal/ports"
+	"boring-budget/internal/domain"
+	"boring-budget/internal/ports"
 )
 
 type EntryService struct {

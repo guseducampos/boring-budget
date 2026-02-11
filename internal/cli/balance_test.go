@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"budgetto/internal/cli/output"
+	"boring-budget/internal/cli/output"
 )
 
 func TestBalanceShowJSONScopesAndFilters(t *testing.T) {
@@ -166,7 +166,7 @@ func TestBalanceShowHumanOutput(t *testing.T) {
 	}))
 
 	out := executeBalanceCmdRaw(t, db, output.FormatHuman, []string{"show", "--scope", "both"})
-	if !strings.Contains(out, "[OK] budgetto") {
+	if !strings.Contains(out, "[OK] boring-budget") {
 		t.Fatalf("expected human output status line, got %q", out)
 	}
 	if !strings.Contains(out, "\"scope\": \"both\"") {

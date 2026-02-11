@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"budgetto/internal/domain"
+	"boring-budget/internal/domain"
 )
 
 func TestCategoryRepoAddAndList(t *testing.T) {

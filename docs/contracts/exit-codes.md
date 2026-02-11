@@ -1,6 +1,6 @@
 # Exit Codes (Stable)
 
-`budgetto` uses the same exit codes for `--output human` and `--output json`.
+`boring-budget` uses the same exit codes for `--output human` and `--output json`.
 
 | code | meaning |
 | --- | --- |

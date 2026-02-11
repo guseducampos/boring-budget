@@ -22,7 +22,7 @@ The format follows a lightweight Keep a Changelog style.
   - `docs/contracts/exit-codes.md`
 - Go project scaffold:
   - `go.mod` / `go.sum`
-  - `cmd/budgetto/main.go`
+  - `cmd/boring-budget/main.go`
   - `internal/cli/root.go`
   - `internal/cli/output/envelope.go`
   - `internal/cli/output/print.go`
@@ -84,7 +84,7 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/cli/data.go`
 - Entry update + exit code enforcement:
   - `internal/cli/output/exit_code.go`
-  - `cmd/budgetto/main.go`
+  - `cmd/boring-budget/main.go`
   - `internal/cli/entry.go`
   - `internal/service/entry_service.go`
   - `internal/store/sqlite/entry_repo.go`
@@ -166,6 +166,8 @@ The format follows a lightweight Keep a Changelog style.
   - `.gitignore`
 
 ### Changed
+
+- Project renamed from `budgetto` to `boring-budget` across module path, CLI command, docs, and local config defaults.
 
 - `AGENTS.md` now enforces atomic commit policy.
 - `README.md` updated with quick-start instructions and contract docs link.

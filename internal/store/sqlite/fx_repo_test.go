@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"budgetto/internal/domain"
+	"boring-budget/internal/domain"
 )
 
 func TestFXRepoCreateAndGetSnapshot(t *testing.T) {

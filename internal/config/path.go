@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	AppDirName      = ".budgetto"
-	DefaultDBFile   = "budgetto.db"
+	AppDirName      = ".boring-budget"
+	DefaultDBFile   = "boring-budget.db"
 	DefaultDataPerm = 0o755
 )
 

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"budgetto/internal/domain"
+	"boring-budget/internal/domain"
 )
 
 type categoryRepoStub struct {

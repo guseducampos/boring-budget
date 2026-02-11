@@ -1,4 +1,4 @@
-# Budgetto Technical Blueprint (v1)
+# boring-budget Technical Blueprint (v1)
 
 ## 1. Goal
 
@@ -49,7 +49,7 @@ Build an agent-friendly Go CLI for personal budgeting with SQLite storage, multi
 
 ## 4. Architecture
 
-- `cmd/budgetto`: CLI entrypoint.
+- `cmd/boring-budget`: CLI entrypoint.
 - `internal/cli`: command handlers, flags, output formatting.
 - `internal/service`: use cases and orchestration.
 - `internal/domain`: core entities and business rules.

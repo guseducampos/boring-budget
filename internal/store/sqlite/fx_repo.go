@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"budgetto/internal/domain"
-	queries "budgetto/internal/store/sqlite/sqlc"
+	"boring-budget/internal/domain"
+	queries "boring-budget/internal/store/sqlite/sqlc"
 )
 
 type FXRepo struct {

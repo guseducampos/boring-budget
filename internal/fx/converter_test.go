@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"budgetto/internal/domain"
+	"boring-budget/internal/domain"
 )
 
 type providerStub struct {

@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"budgetto/internal/domain"
-	sqlitestore "budgetto/internal/store/sqlite"
+	"boring-budget/internal/domain"
+	sqlitestore "boring-budget/internal/store/sqlite"
 )
 
 func TestPortabilityServiceImportRollsBackBatchWhenOneRecordFails(t *testing.T) {

@@ -1,4 +1,4 @@
-# Budgetto Agent Contracts
+# boring-budget Agent Contracts
 
 This folder defines deterministic JSON contract examples for agent integrations.
 

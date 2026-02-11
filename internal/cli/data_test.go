@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"budgetto/internal/cli/output"
-	"budgetto/internal/domain"
-	sqlitestore "budgetto/internal/store/sqlite"
+	"boring-budget/internal/cli/output"
+	"boring-budget/internal/domain"
+	sqlitestore "boring-budget/internal/store/sqlite"
 )
 
 type dataExportFile struct {
@@ -360,7 +360,7 @@ func TestDataCommandJSONBackupRestore(t *testing.T) {
 	t.Parallel()
 
 	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "budgetto.db")
+	dbPath := filepath.Join(tempDir, "boring-budget.db")
 	migrationsDir := cliMigrationsPath(t)
 
 	db, err := sqlitestore.OpenAndMigrate(context.Background(), dbPath, migrationsDir)
@@ -392,7 +392,7 @@ func TestDataCommandJSONBackupRestore(t *testing.T) {
 		t.Fatalf("expected one transaction before backup, got %d", count)
 	}
 
-	backupPath := filepath.Join(tempDir, "snapshots", "budgetto-backup.sqlite")
+	backupPath := filepath.Join(tempDir, "snapshots", "boring-budget-backup.sqlite")
 	backupPayload := executeDataCmdJSONWithOptions(t, opts, []string{
 		"backup",
 		"--file", backupPath,
@@ -462,7 +462,7 @@ func TestDataCommandJSONRestoreFailureRollsBackDatabase(t *testing.T) {
 	t.Parallel()
 
 	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "budgetto.db")
+	dbPath := filepath.Join(tempDir, "boring-budget.db")
 	migrationsDir := cliMigrationsPath(t)
 
 	db, err := sqlitestore.OpenAndMigrate(context.Background(), dbPath, migrationsDir)

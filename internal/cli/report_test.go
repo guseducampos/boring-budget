@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"budgetto/internal/cli/output"
+	"boring-budget/internal/cli/output"
 )
 
 func TestReportCommandJSONScopesAndFilters(t *testing.T) {
@@ -249,7 +249,7 @@ func TestReportCommandHumanOutput(t *testing.T) {
 	}))
 
 	out := executeReportCmdRaw(t, db, output.FormatHuman, []string{"monthly", "--month", "2026-02"})
-	if !strings.Contains(out, "[OK] budgetto") {
+	if !strings.Contains(out, "[OK] boring-budget") {
 		t.Fatalf("expected human output status line, got %q", out)
 	}
 	if !strings.Contains(out, "\"grouping\": \"month\"") {

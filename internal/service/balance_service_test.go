@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"budgetto/internal/domain"
+	"boring-budget/internal/domain"
 )
 
 type balanceEntryReaderStub struct {

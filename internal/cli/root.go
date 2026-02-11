@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"budgetto/internal/cli/output"
-	"budgetto/internal/config"
-	"budgetto/internal/domain"
-	sqlitestore "budgetto/internal/store/sqlite"
+	"boring-budget/internal/cli/output"
+	"boring-budget/internal/config"
+	"boring-budget/internal/domain"
+	sqlitestore "boring-budget/internal/store/sqlite"
 	"github.com/spf13/cobra"
 )
 
@@ -37,8 +37,8 @@ func NewRootCmd() *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use:           "budgetto",
-		Short:         "Budgetto is a local-first budgeting CLI",
+		Use:           "boring-budget",
+		Short:         "boring-budget is a local-first budgeting CLI",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -77,7 +77,7 @@ func NewRootCmd() *cobra.Command {
 			envelope := output.NewSuccessEnvelope(
 				map[string]any{
 					"command":        "root",
-					"message":        "budgetto CLI foundation ready",
+					"message":        "boring-budget CLI foundation ready",
 					"timezone":       opts.Timezone,
 					"db_path":        opts.DBPath,
 					"migrations_dir": opts.MigrationsDir,

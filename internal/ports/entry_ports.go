@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"budgetto/internal/domain"
+	"boring-budget/internal/domain"
 )
 
 type EntryRepository interface {

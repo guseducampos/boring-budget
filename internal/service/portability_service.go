@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"budgetto/internal/domain"
+	"boring-budget/internal/domain"
 )
 
 const (

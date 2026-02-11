@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"budgetto/internal/cli"
-	"budgetto/internal/cli/output"
+	"boring-budget/internal/cli"
+	"boring-budget/internal/cli/output"
 )
 
 func main() {

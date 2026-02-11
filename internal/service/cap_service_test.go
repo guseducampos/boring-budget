@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"budgetto/internal/domain"
+	"boring-budget/internal/domain"
 )
 
 type capRepoStub struct {

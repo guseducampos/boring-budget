@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"budgetto/internal/domain"
+	"boring-budget/internal/domain"
 )
 
 type SetupSettingsRepository interface {
