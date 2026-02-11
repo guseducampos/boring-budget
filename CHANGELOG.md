@@ -44,6 +44,11 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/service/label_service.go`
   - `internal/store/sqlite/label_repo.go`
   - `internal/cli/label.go`
+- SQLC query layer:
+  - `sqlc.yaml`
+  - `internal/store/sqlite/queries/category.sql`
+  - `internal/store/sqlite/queries/label.sql`
+  - `internal/store/sqlite/sqlc/*` (generated code)
 - Phase 2 tests:
   - `internal/service/category_service_test.go`
   - `internal/store/sqlite/category_repo_test.go`
@@ -61,6 +66,7 @@ The format follows a lightweight Keep a Changelog style.
 - Migration engine switched from custom raw SQL runner to Goose (`github.com/pressly/goose/v3`).
 - Migration file `migrations/0001_initial.sql` converted to Goose `Up/Down` format.
 - Root CLI now registers `category` and `label` command groups.
+- Category/label repositories migrated from embedded raw CRUD SQL strings to SQLC-generated queries.
 
 ### Verified
 
