@@ -38,11 +38,11 @@ checksum:
 brews:
   - name: boring-budget
     repository:
-      owner: gustavocampos
+      owner: guseducampos
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/gustavocampos/boring-budget"
+    homepage: "https://github.com/guseducampos/boring-budget"
     description: "Local-first budgeting CLI with deterministic JSON contracts"
     commit_author:
       name: boring-budget bot

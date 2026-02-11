@@ -64,14 +64,14 @@ boring-budget --help
 Once releases are published, install with:
 
 ```bash
-brew tap gustavocampos/tap
+brew tap guseducampos/tap
 brew install boring-budget
 ```
 
 Or one-liner:
 
 ```bash
-brew install gustavocampos/tap/boring-budget
+brew install guseducampos/tap/boring-budget
 ```
 
 ### Build from source (development)
@@ -242,9 +242,9 @@ Restore details:
 ```
 
 Contract docs and examples:
-- `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/docs/contracts/README.md`
-- `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/docs/contracts/errors.md`
-- `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/docs/contracts/exit-codes.md`
+- `docs/contracts/README.md`
+- `docs/contracts/errors.md`
+- `docs/contracts/exit-codes.md`
 
 ## Architecture
 
@@ -270,7 +270,7 @@ go test ./...
 
 ### CI
 
-- GitHub Actions workflow: `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/.github/workflows/ci.yml`
+- GitHub Actions workflow: `.github/workflows/ci.yml`
 - On `pull_request` and `push` to `master`, CI runs:
   - tests on `ubuntu-latest`, `macos-latest`, `windows-latest`
   - cross-platform builds for:
@@ -278,17 +278,17 @@ go test ./...
     - `linux/amd64`, `linux/arm64`
     - `windows/amd64`
 - Build artifacts are uploaded per target with SHA256 checksum files.
-- Release workflow: `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/.github/workflows/release.yml`
+- Release workflow: `.github/workflows/release.yml`
   - Triggered on `v*` tags
   - Publishes GitHub release assets using GoReleaser
-  - Updates Homebrew formula in `gustavocampos/homebrew-tap` (requires `HOMEBREW_TAP_GITHUB_TOKEN` secret)
+  - Updates Homebrew formula in `guseducampos/homebrew-tap` (requires `HOMEBREW_TAP_GITHUB_TOKEN` secret)
 
 ### Important implementation notes
 
 - Migrations are managed with Goose.
 - Repository query layer uses SQLC.
 - JSON contract determinism is guarded by golden tests and docs-sync tests.
-- Project-level implementation rules live in `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/AGENTS.md`.
+- Project-level implementation rules live in `AGENTS.md`.
 
 ## Contributing
 
@@ -302,6 +302,6 @@ Before opening a PR:
 
 ## Documentation
 
-- Product plan: `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/docs/PRODUCT_PLAN.md`
-- Technical blueprint: `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/docs/TECHNICAL_BLUEPRINT.md`
-- Changelog: `/Users/gustavocampos/Developer/GustavoProjects/boring-tools/boring-budget/CHANGELOG.md`
+- Product plan: `docs/PRODUCT_PLAN.md`
+- Technical blueprint: `docs/TECHNICAL_BLUEPRINT.md`
+- Changelog: `CHANGELOG.md`
