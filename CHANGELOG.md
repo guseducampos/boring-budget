@@ -116,6 +116,9 @@ The format follows a lightweight Keep a Changelog style.
   - `internal/cli/output/exit_code_test.go`
 - Data CLI regression tests:
   - `internal/cli/data_test.go`
+- Golden JSON contract coverage for key agent commands:
+  - `internal/cli/json_contracts_golden_test.go`
+  - `internal/cli/testdata/json_contracts/*`
 - Portability atomic-import tests:
   - `internal/service/portability_service_test.go`
 - Data portability report export contract:

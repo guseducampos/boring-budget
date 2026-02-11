@@ -1,0 +1,27 @@
+{
+  "data": {
+    "cap": {
+      "amount_minor": 45000,
+      "created_at_utc": "<timestamp_utc>",
+      "currency_code": "USD",
+      "id": 1,
+      "month_key": "2026-02",
+      "updated_at_utc": "<timestamp_utc>"
+    },
+    "cap_change": {
+      "changed_at_utc": "<timestamp_utc>",
+      "currency_code": "USD",
+      "id": 1,
+      "month_key": "2026-02",
+      "new_amount_minor": 45000,
+      "old_amount_minor": null
+    }
+  },
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "<timestamp_utc>"
+  },
+  "ok": true,
+  "warnings": []
+}

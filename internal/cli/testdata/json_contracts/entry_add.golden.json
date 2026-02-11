@@ -1,0 +1,25 @@
+{
+  "data": {
+    "entry": {
+      "amount_minor": 1250,
+      "category_id": 1,
+      "created_at_utc": "<timestamp_utc>",
+      "currency_code": "USD",
+      "id": 1,
+      "label_ids": [
+        1
+      ],
+      "note": "coffee",
+      "transaction_date_utc": "2026-02-01T11:15:00Z",
+      "type": "expense",
+      "updated_at_utc": "<timestamp_utc>"
+    }
+  },
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "<timestamp_utc>"
+  },
+  "ok": true,
+  "warnings": []
+}

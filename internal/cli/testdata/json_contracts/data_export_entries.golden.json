@@ -1,0 +1,15 @@
+{
+  "data": {
+    "exported": 1,
+    "file": "entries.json",
+    "format": "json",
+    "resource": "entries"
+  },
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "<timestamp_utc>"
+  },
+  "ok": true,
+  "warnings": []
+}
