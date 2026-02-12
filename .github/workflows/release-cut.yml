@@ -1,0 +1,151 @@
+name: Cut Release Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "Semantic version bump type"
+        required: true
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+          - custom
+      custom_version:
+        description: "Custom version tag when release_type=custom (for example: v1.2.3)"
+        required: false
+        type: string
+      target_ref:
+        description: "Branch or commit to tag (default: master)"
+        required: false
+        default: "master"
+        type: string
+      dry_run:
+        description: "Validate only, do not push the tag"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-cut
+  cancel-in-progress: false
+
+jobs:
+  cut-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_ref }}
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: resolve_version
+        env:
+          RELEASE_TYPE: ${{ inputs.release_type }}
+          CUSTOM_VERSION: ${{ inputs.custom_version }}
+        run: |
+          latest_tag="$(git tag --list 'v*' --sort=-version:refname | head -n1)"
+          if [[ -z "${latest_tag}" ]]; then
+            latest_tag="v0.0.0"
+          fi
+
+          if [[ ! "${latest_tag}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Latest tag ${latest_tag} is not in expected semver format vX.Y.Z." >&2
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+
+          case "${RELEASE_TYPE}" in
+            patch)
+              patch="$((patch + 1))"
+              next_version="v${major}.${minor}.${patch}"
+              ;;
+            minor)
+              minor="$((minor + 1))"
+              next_version="v${major}.${minor}.0"
+              ;;
+            major)
+              major="$((major + 1))"
+              next_version="v${major}.0.0"
+              ;;
+            custom)
+              if [[ -z "${CUSTOM_VERSION}" ]]; then
+                echo "custom_version is required when release_type=custom." >&2
+                exit 1
+              fi
+              next_version="${CUSTOM_VERSION}"
+              ;;
+            *)
+              echo "Unsupported release_type: ${RELEASE_TYPE}" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ ! "${next_version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version format: ${next_version}" >&2
+            echo "Use semantic version tags like v0.1.2" >&2
+            exit 1
+          fi
+
+          echo "resolved_version=${next_version}" >> "$GITHUB_OUTPUT"
+          echo "latest_version=${latest_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure tag does not already exist
+        env:
+          VERSION: ${{ steps.resolve_version.outputs.resolved_version }}
+        run: |
+          if git rev-parse "${VERSION}" >/dev/null 2>&1; then
+            echo "Tag ${VERSION} already exists locally." >&2
+            exit 1
+          fi
+          if git ls-remote --tags origin "refs/tags/${VERSION}" | grep -q .; then
+            echo "Tag ${VERSION} already exists on origin." >&2
+            exit 1
+          fi
+
+      - name: Print target commit
+        env:
+          VERSION: ${{ steps.resolve_version.outputs.resolved_version }}
+          LATEST_VERSION: ${{ steps.resolve_version.outputs.latest_version }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
+          TARGET_REF: ${{ inputs.target_ref }}
+        run: |
+          COMMIT_SHA="$(git rev-parse HEAD)"
+          echo "Release type: ${RELEASE_TYPE}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Previous version: ${LATEST_VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tag to create: ${VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Target ref: ${TARGET_REF}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Target commit: ${COMMIT_SHA}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Configure git identity
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and push release tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.resolve_version.outputs.resolved_version }}
+        run: |
+          git tag -a "${VERSION}" -m "Release ${VERSION}"
+          git push origin "${VERSION}"
+          echo "Pushed tag ${VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Release workflow will publish artifacts from ${VERSION}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dry run complete
+        if: ${{ inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.resolve_version.outputs.resolved_version }}
+        run: |
+          echo "Dry run: tag ${VERSION} was validated but not created." >> "$GITHUB_STEP_SUMMARY"
