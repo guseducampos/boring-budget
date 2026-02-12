@@ -102,9 +102,9 @@ Get useful output in under a minute.
 boring-budget setup init \
   --default-currency USD \
   --timezone America/New_York \
-  --opening-balance-minor 100000 \
+  --opening-balance 1000.00 \
   --opening-balance-date 2026-02-01 \
-  --month-cap-minor 50000 \
+  --month-cap 500.00 \
   --month-cap-month 2026-02
 ```
 
@@ -120,14 +120,14 @@ boring-budget label add "Recurring"
 ```bash
 boring-budget entry add \
   --type income \
-  --amount-minor 350000 \
+  --amount 3500.00 \
   --currency USD \
   --date 2026-02-01 \
   --note "Salary"
 
 boring-budget entry add \
   --type expense \
-  --amount-minor 1250 \
+  --amount 12.50 \
   --currency USD \
   --date 2026-02-11 \
   --category-id 1 \
@@ -174,8 +174,8 @@ boring-budget label delete <id>
 ### Entries
 
 ```bash
-boring-budget entry add --type income|expense --amount-minor <int> --currency <ISO> --date <RFC3339|YYYY-MM-DD> [--category-id <id>] [--label-id <id>] [--note <text>]
-boring-budget entry update <id> [--type ...] [--amount-minor ...] [--currency ...] [--date ...] [--category-id <id>|--clear-category] [--label-id <id>|--clear-labels] [--note <text>|--clear-note]
+boring-budget entry add --type income|expense --amount <decimal> --currency <ISO> --date <RFC3339|YYYY-MM-DD> [--category-id <id>] [--label-id <id>] [--note <text>]
+boring-budget entry update <id> [--type ...] [--amount ...] [--currency ...] [--date ...] [--category-id <id>|--clear-category] [--label-id <id>|--clear-labels] [--note <text>|--clear-note]
 boring-budget entry list [--type ...] [--category-id ...] [--from ...] [--to ...] [--note-contains <text>] [--label-id ...] [--label-mode any|all|none]
 boring-budget entry delete <id>
 ```
@@ -185,7 +185,7 @@ Note: `--note` is an optional description field for entries, and `entry list --n
 ### Caps
 
 ```bash
-boring-budget cap set --month YYYY-MM --amount-minor <int> --currency <ISO>
+boring-budget cap set --month YYYY-MM --amount <decimal> --currency <ISO>
 boring-budget cap show --month YYYY-MM
 boring-budget cap history --month YYYY-MM
 ```

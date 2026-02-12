@@ -20,7 +20,7 @@ func TestCapCommandJSONSetShowHistory(t *testing.T) {
 	firstSet := executeCapCmdJSON(t, db, []string{
 		"set",
 		"--month", "2026-02",
-		"--amount-minor", "45000",
+		"--amount", "450.00",
 		"--currency", "usd",
 	})
 	if ok, _ := firstSet["ok"].(bool); !ok {
@@ -47,7 +47,7 @@ func TestCapCommandJSONSetShowHistory(t *testing.T) {
 	secondSet := executeCapCmdJSON(t, db, []string{
 		"set",
 		"--month", "2026-02",
-		"--amount-minor", "50000",
+		"--amount", "500.00",
 		"--currency", "USD",
 	})
 	if ok, _ := secondSet["ok"].(bool); !ok {
@@ -115,7 +115,7 @@ func TestCapCommandJSONInvalidCurrencyCode(t *testing.T) {
 	payload := executeCapCmdJSON(t, db, []string{
 		"set",
 		"--month", "2026-02",
-		"--amount-minor", "100",
+		"--amount", "1.00",
 		"--currency", "US",
 	})
 	if ok, _ := payload["ok"].(bool); ok {
@@ -128,6 +128,50 @@ func TestCapCommandJSONInvalidCurrencyCode(t *testing.T) {
 	}
 }
 
+func TestCapCommandJSONSetConvertsAmountToMinor(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	payload := executeCapCmdJSON(t, db, []string{
+		"set",
+		"--month", "2026-02",
+		"--amount", "450.25",
+		"--currency", "USD",
+	})
+	if ok, _ := payload["ok"].(bool); !ok {
+		t.Fatalf("expected ok=true payload=%v", payload)
+	}
+
+	data := mustMap(t, payload["data"])
+	capValue := mustMap(t, data["cap"])
+	if got := int64(capValue["amount_minor"].(float64)); got != 45025 {
+		t.Fatalf("expected amount_minor 45025, got %d", got)
+	}
+}
+
+func TestCapCommandJSONSetRequiresAmount(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	payload := executeCapCmdJSON(t, db, []string{
+		"set",
+		"--month", "2026-02",
+		"--currency", "USD",
+	})
+	if ok, _ := payload["ok"].(bool); ok {
+		t.Fatalf("expected ok=false payload=%v", payload)
+	}
+
+	errPayload := mustMap(t, payload["error"])
+	if errPayload["code"].(string) != "INVALID_ARGUMENT" {
+		t.Fatalf("expected INVALID_ARGUMENT, got %v", errPayload["code"])
+	}
+}
+
 func TestCapCommandJSONInvalidMonth(t *testing.T) {
 	t.Parallel()
 
@@ -137,7 +181,7 @@ func TestCapCommandJSONInvalidMonth(t *testing.T) {
 	payload := executeCapCmdJSON(t, db, []string{
 		"set",
 		"--month", "2026-2",
-		"--amount-minor", "100",
+		"--amount", "1.00",
 		"--currency", "USD",
 	})
 	if ok, _ := payload["ok"].(bool); ok {
@@ -178,7 +222,7 @@ func TestCapCommandHumanOutput(t *testing.T) {
 	out := executeCapCmdRaw(t, db, output.FormatHuman, []string{
 		"set",
 		"--month", "2026-02",
-		"--amount-minor", "40000",
+		"--amount", "400.00",
 		"--currency", "USD",
 	})
 

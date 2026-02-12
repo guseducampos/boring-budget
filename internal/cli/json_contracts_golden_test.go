@@ -30,7 +30,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		raw := executeEntryCmdRaw(t, db, output.FormatJSON, []string{
 			"add",
 			"--type", "expense",
-			"--amount-minor", "1250",
+			"--amount", "12.50",
 			"--currency", "usd",
 			"--date", "2026-02-01T08:15:00-03:00",
 			"--category-id", int64ToString(categoryID),
@@ -48,7 +48,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		raw := executeCapCmdRaw(t, db, output.FormatJSON, []string{
 			"set",
 			"--month", "2026-02",
-			"--amount-minor", "45000",
+			"--amount", "450.00",
 			"--currency", "usd",
 		})
 
@@ -62,7 +62,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		setPayload := executeCapCmdJSON(t, db, []string{
 			"set",
 			"--month", "2026-02",
-			"--amount-minor", "45000",
+			"--amount", "450.00",
 			"--currency", "USD",
 		})
 		if ok, _ := setPayload["ok"].(bool); !ok {
@@ -84,7 +84,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		firstSet := executeCapCmdJSON(t, db, []string{
 			"set",
 			"--month", "2026-02",
-			"--amount-minor", "45000",
+			"--amount", "450.00",
 			"--currency", "USD",
 		})
 		if ok, _ := firstSet["ok"].(bool); !ok {
@@ -94,7 +94,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		secondSet := executeCapCmdJSON(t, db, []string{
 			"set",
 			"--month", "2026-02",
-			"--amount-minor", "50000",
+			"--amount", "500.00",
 			"--currency", "USD",
 		})
 		if ok, _ := secondSet["ok"].(bool); !ok {
@@ -121,7 +121,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		addPayload := executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "expense",
-			"--amount-minor", "1200",
+			"--amount", "12.00",
 			"--currency", "USD",
 			"--date", "2026-02-01",
 			"--category-id", int64ToString(categoryA),
@@ -135,7 +135,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		raw := executeEntryCmdRaw(t, db, output.FormatJSON, []string{
 			"update", int64ToString(entryID),
 			"--type", "income",
-			"--amount-minor", "3500",
+			"--amount", "35.00",
 			"--currency", "EUR",
 			"--date", "2026-02-05",
 			"--category-id", int64ToString(categoryB),
@@ -154,7 +154,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		capSetPayload := executeCapCmdJSON(t, db, []string{
 			"set",
 			"--month", "2026-02",
-			"--amount-minor", "1500",
+			"--amount", "15.00",
 			"--currency", "USD",
 		})
 		if ok, _ := capSetPayload["ok"].(bool); !ok {
@@ -164,14 +164,14 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "income",
-			"--amount-minor", "5000",
+			"--amount", "50.00",
 			"--currency", "USD",
 			"--date", "2026-02-01",
 		}))
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "expense",
-			"--amount-minor", "1200",
+			"--amount", "12.00",
 			"--currency", "USD",
 			"--date", "2026-02-02",
 			"--category-id", int64ToString(categoryID),
@@ -196,7 +196,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		capSetPayload := executeCapCmdJSON(t, db, []string{
 			"set",
 			"--month", "2026-02",
-			"--amount-minor", "1800",
+			"--amount", "18.00",
 			"--currency", "USD",
 		})
 		if ok, _ := capSetPayload["ok"].(bool); !ok {
@@ -206,7 +206,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "income",
-			"--amount-minor", "5000",
+			"--amount", "50.00",
 			"--currency", "USD",
 			"--date", "2026-02-01",
 			"--label-id", int64ToString(labelID),
@@ -214,7 +214,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "expense",
-			"--amount-minor", "1200",
+			"--amount", "12.00",
 			"--currency", "USD",
 			"--date", "2026-02-02",
 			"--category-id", int64ToString(categoryID),
@@ -223,7 +223,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "expense",
-			"--amount-minor", "400",
+			"--amount", "4.00",
 			"--currency", "EUR",
 			"--date", "2026-02-10",
 			"--category-id", int64ToString(categoryID),
@@ -250,14 +250,14 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "income",
-			"--amount-minor", "5000",
+			"--amount", "50.00",
 			"--currency", "USD",
 			"--date", "2026-02-01",
 		}))
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "expense",
-			"--amount-minor", "1000",
+			"--amount", "10.00",
 			"--currency", "USD",
 			"--date", "2026-03-03",
 			"--category-id", int64ToString(categoryID),
@@ -281,14 +281,14 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "income",
-			"--amount-minor", "5000",
+			"--amount", "50.00",
 			"--currency", "USD",
 			"--date", "2026-02-01",
 		}))
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "expense",
-			"--amount-minor", "1000",
+			"--amount", "10.00",
 			"--currency", "USD",
 			"--date", "2026-03-03",
 			"--category-id", int64ToString(categoryID),
@@ -296,7 +296,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "expense",
-			"--amount-minor", "500",
+			"--amount", "5.00",
 			"--currency", "USD",
 			"--date", "2026-04-10",
 			"--category-id", int64ToString(categoryID),
@@ -320,7 +320,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "income",
-			"--amount-minor", "10000",
+			"--amount", "100.00",
 			"--currency", "USD",
 			"--date", "2026-01-10",
 			"--label-id", int64ToString(labelID),
@@ -328,7 +328,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "expense",
-			"--amount-minor", "3000",
+			"--amount", "30.00",
 			"--currency", "USD",
 			"--date", "2026-02-05",
 			"--label-id", int64ToString(labelID),
@@ -336,14 +336,14 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "expense",
-			"--amount-minor", "500",
+			"--amount", "5.00",
 			"--currency", "USD",
 			"--date", "2026-03-01",
 		}))
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "income",
-			"--amount-minor", "700",
+			"--amount", "7.00",
 			"--currency", "EUR",
 			"--date", "2026-02-10",
 		}))
@@ -367,7 +367,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "income",
-			"--amount-minor", "9000",
+			"--amount", "90.00",
 			"--currency", "USD",
 			"--date", "2026-01-31",
 			"--note", "salary",
@@ -396,7 +396,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "income",
-			"--amount-minor", "12000",
+			"--amount", "120.00",
 			"--currency", "USD",
 			"--date", "2026-02-01",
 			"--note", "salary",
@@ -404,7 +404,7 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 			"add",
 			"--type", "expense",
-			"--amount-minor", "3000",
+			"--amount", "30.00",
 			"--currency", "USD",
 			"--date", "2026-02-05",
 			"--note", "rent",
@@ -437,9 +437,9 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 			"init",
 			"--default-currency", "usd",
 			"--timezone", "UTC",
-			"--opening-balance-minor", "100000",
+			"--opening-balance", "1000.00",
 			"--opening-balance-date", "2026-02-11",
-			"--month-cap-minor", "50000",
+			"--month-cap", "500.00",
 			"--month-cap-month", "2026-02",
 		})
 

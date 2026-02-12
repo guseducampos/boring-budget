@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"boring-budget/internal/cli/output"
+	"boring-budget/internal/domain"
 	"boring-budget/internal/service"
 	sqlitestore "boring-budget/internal/store/sqlite"
 	"github.com/spf13/cobra"
@@ -13,10 +14,10 @@ import (
 type setupInitFlags struct {
 	defaultCurrency      string
 	timezone             string
-	openingBalanceMinor  int64
+	openingBalance       string
 	openingBalanceCode   string
 	openingBalanceDate   string
-	currentMonthCapMinor int64
+	currentMonthCap      string
 	currentMonthCapCode  string
 	currentMonthCapMonth string
 }
@@ -64,6 +65,33 @@ func newSetupInitCmd(opts *RootOptions) *cobra.Command {
 					Details: map[string]any{"field": "timezone"},
 				})
 			}
+			var openingBalanceMinor int64
+			if cmd.Flags().Changed("opening-balance") {
+				openingBalanceCurrency := flags.openingBalanceCode
+				if strings.TrimSpace(openingBalanceCurrency) == "" {
+					openingBalanceCurrency = flags.defaultCurrency
+				}
+
+				parsedOpeningBalanceMinor, err := domain.ParseMajorAmountToMinor(flags.openingBalance, openingBalanceCurrency)
+				if err != nil {
+					return printReportError(cmd, reportOutputFormat(opts), err)
+				}
+				openingBalanceMinor = parsedOpeningBalanceMinor
+			}
+
+			var currentMonthCapMinor int64
+			if cmd.Flags().Changed("month-cap") {
+				monthCapCurrency := flags.currentMonthCapCode
+				if strings.TrimSpace(monthCapCurrency) == "" {
+					monthCapCurrency = flags.defaultCurrency
+				}
+
+				parsedCurrentMonthCapMinor, err := domain.ParseMajorAmountToMinor(flags.currentMonthCap, monthCapCurrency)
+				if err != nil {
+					return printReportError(cmd, reportOutputFormat(opts), err)
+				}
+				currentMonthCapMinor = parsedCurrentMonthCapMinor
+			}
 
 			setupSvc, err := newSetupService(opts)
 			if err != nil {
@@ -73,10 +101,10 @@ func newSetupInitCmd(opts *RootOptions) *cobra.Command {
 			result, err := setupSvc.Init(cmd.Context(), service.SetupInitInput{
 				DefaultCurrencyCode:  flags.defaultCurrency,
 				DisplayTimezone:      flags.timezone,
-				OpeningBalanceMinor:  flags.openingBalanceMinor,
+				OpeningBalanceMinor:  openingBalanceMinor,
 				OpeningBalanceCode:   flags.openingBalanceCode,
 				OpeningBalanceDate:   flags.openingBalanceDate,
-				CurrentMonthCapMinor: flags.currentMonthCapMinor,
+				CurrentMonthCapMinor: currentMonthCapMinor,
 				CurrentMonthCapCode:  flags.currentMonthCapCode,
 				CurrentMonthKey:      flags.currentMonthCapMonth,
 			})
@@ -91,10 +119,10 @@ func newSetupInitCmd(opts *RootOptions) *cobra.Command {
 
 	cmd.Flags().StringVar(&flags.defaultCurrency, "default-currency", "", "Default currency code (required, e.g. USD)")
 	cmd.Flags().StringVar(&flags.timezone, "timezone", "", "Display timezone (required, e.g. America/New_York)")
-	cmd.Flags().Int64Var(&flags.openingBalanceMinor, "opening-balance-minor", 0, "Optional opening balance in minor units")
+	cmd.Flags().StringVar(&flags.openingBalance, "opening-balance", "", "Optional opening balance in major units (e.g. 1000.00)")
 	cmd.Flags().StringVar(&flags.openingBalanceCode, "opening-balance-currency", "", "Optional opening balance currency (defaults to default-currency)")
 	cmd.Flags().StringVar(&flags.openingBalanceDate, "opening-balance-date", "", "Optional opening balance date (RFC3339 or YYYY-MM-DD)")
-	cmd.Flags().Int64Var(&flags.currentMonthCapMinor, "month-cap-minor", 0, "Optional current month cap in minor units")
+	cmd.Flags().StringVar(&flags.currentMonthCap, "month-cap", "", "Optional current month cap in major units (e.g. 500.00)")
 	cmd.Flags().StringVar(&flags.currentMonthCapCode, "month-cap-currency", "", "Optional month cap currency (defaults to default-currency)")
 	cmd.Flags().StringVar(&flags.currentMonthCapMonth, "month-cap-month", "", "Optional month cap target month (YYYY-MM, defaults to current month)")
 

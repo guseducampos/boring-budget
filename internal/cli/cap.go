@@ -14,7 +14,7 @@ import (
 
 type capSetFlags struct {
 	monthRaw    string
-	amountMinor int64
+	amount      string
 	currencyRaw string
 }
 
@@ -70,7 +70,7 @@ func newCapSetCmd(opts *RootOptions) *cobra.Command {
 				return printCapError(cmd, capOutputFormat(opts), err)
 			}
 
-			input, err := buildCapSetInput(flags)
+			input, err := buildCapSetInput(cmd, flags)
 			if err != nil {
 				return printCapError(cmd, capOutputFormat(opts), err)
 			}
@@ -89,7 +89,7 @@ func newCapSetCmd(opts *RootOptions) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&flags.monthRaw, "month", "", "Target month in YYYY-MM")
-	cmd.Flags().Int64Var(&flags.amountMinor, "amount-minor", 0, "Cap amount in minor units (must be > 0)")
+	cmd.Flags().StringVar(&flags.amount, "amount", "", "Cap amount in major units (e.g. 500.00)")
 	cmd.Flags().StringVar(&flags.currencyRaw, "currency", defaultEntryCurrency, "ISO currency code (e.g. USD)")
 
 	return cmd
@@ -196,12 +196,19 @@ func newCapService(opts *RootOptions) (*service.CapService, error) {
 	return svc, nil
 }
 
-func buildCapSetInput(flags *capSetFlags) (domain.CapSetInput, error) {
+func buildCapSetInput(cmd *cobra.Command, flags *capSetFlags) (domain.CapSetInput, error) {
 	if flags == nil {
 		return domain.CapSetInput{}, &capCLIError{
 			Code:    "INTERNAL_ERROR",
 			Message: "cap set flags unavailable",
 			Details: map[string]any{},
+		}
+	}
+	if cmd != nil && !cmd.Flags().Changed("amount") {
+		return domain.CapSetInput{}, &capCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "amount is required",
+			Details: map[string]any{"field": "amount"},
 		}
 	}
 
@@ -210,9 +217,14 @@ func buildCapSetInput(flags *capSetFlags) (domain.CapSetInput, error) {
 		return domain.CapSetInput{}, err
 	}
 
+	amountMinor, err := domain.ParseMajorAmountToMinor(flags.amount, flags.currencyRaw)
+	if err != nil {
+		return domain.CapSetInput{}, err
+	}
+
 	return domain.CapSetInput{
 		MonthKey:     monthKey,
-		AmountMinor:  flags.amountMinor,
+		AmountMinor:  amountMinor,
 		CurrencyCode: flags.currencyRaw,
 	}, nil
 }
@@ -268,7 +280,10 @@ func printCapError(cmd *cobra.Command, format string, err error) error {
 func codeFromCapError(err error) string {
 	switch {
 	case errors.Is(err, domain.ErrInvalidMonthKey),
-		errors.Is(err, domain.ErrInvalidCapAmount):
+		errors.Is(err, domain.ErrInvalidCapAmount),
+		errors.Is(err, domain.ErrInvalidAmount),
+		errors.Is(err, domain.ErrInvalidAmountPrecision),
+		errors.Is(err, domain.ErrAmountOverflow):
 		return "INVALID_ARGUMENT"
 	case errors.Is(err, domain.ErrInvalidCurrencyCode):
 		return "INVALID_CURRENCY_CODE"
@@ -287,8 +302,14 @@ func messageFromCapError(err error) string {
 	switch {
 	case errors.Is(err, domain.ErrInvalidMonthKey):
 		return "month must use YYYY-MM"
+	case errors.Is(err, domain.ErrInvalidAmount):
+		return "amount must be a valid decimal number"
+	case errors.Is(err, domain.ErrInvalidAmountPrecision):
+		return "amount has too many decimal places for currency"
+	case errors.Is(err, domain.ErrAmountOverflow):
+		return "amount is too large"
 	case errors.Is(err, domain.ErrInvalidCapAmount):
-		return "amount-minor must be greater than zero"
+		return "amount must be greater than zero"
 	case errors.Is(err, domain.ErrInvalidCurrencyCode):
 		return "currency must be a 3-letter ISO code"
 	case errors.Is(err, domain.ErrCapNotFound):

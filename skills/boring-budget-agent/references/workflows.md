@@ -27,7 +27,9 @@ Use this reference when executing common `boring-budget` tasks repeatedly.
 1. Add supporting taxonomy:
    - `category add`, `label add`
 2. Add entries with explicit required fields:
-   - `--type`, `--amount-minor`, `--currency`, `--date`
+   - `--type`, `--currency`, `--date`
+   - amount input: use `--amount`; CLI conversion/validation is deterministic
+   - legacy minor-unit input flags are removed (`--amount-minor`, `--opening-balance-minor`, `--month-cap-minor`)
 3. Query back with filters:
    - `entry list --from ... --to ... --label-mode any|all|none --output json`
 4. Validate:
@@ -37,8 +39,9 @@ Use this reference when executing common `boring-budget` tasks repeatedly.
 ## 3) Cap-safe expense writes
 
 1. Set or update cap:
-   - `cap set --month YYYY-MM --amount-minor ... --currency ... --output json`
+   - `cap set --month YYYY-MM --amount ... --currency ... --output json`
 2. Add/update expense entry.
+   - for `entry update --amount`, include `--currency` in the same command
 3. If `warnings[]` contains `CAP_EXCEEDED`, treat as successful write plus warning.
 4. Confirm cap history:
    - `cap history --month YYYY-MM --output json`
