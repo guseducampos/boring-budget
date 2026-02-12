@@ -1,3 +1,10 @@
+---
+summary: Stable CLI exit-code mapping used for both human and JSON outputs.
+read_when:
+  - Changing command failure semantics.
+  - Implementing agent logic based on process exit status.
+---
+
 # Exit Codes (Stable)
 
 `boring-budget` uses the same exit codes for `--output human` and `--output json`.

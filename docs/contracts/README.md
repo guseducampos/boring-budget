@@ -1,3 +1,10 @@
+---
+summary: Deterministic JSON contract guide and example index for agent integrations.
+read_when:
+  - Changing JSON output structure, warnings, or envelope fields.
+  - Building or fixing agent flows that parse boring-budget responses.
+---
+
 # boring-budget Agent Contracts
 
 This folder defines deterministic JSON contract examples for agent integrations.

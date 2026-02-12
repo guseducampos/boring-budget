@@ -307,8 +307,10 @@ Before opening a PR:
 
 ## Documentation
 
-- Product plan: `docs/PRODUCT_PLAN.md`
-- Technical blueprint: `docs/TECHNICAL_BLUEPRINT.md`
+- Docs router (start here): `docs/README.md`
+- Unified specification (canonical): `docs/SPEC.md`
+- Agent contracts: `docs/contracts/README.md`
+- Docs discovery helper: `./scripts/docs-list.sh`
 - Changelog: `CHANGELOG.md`
 
 ## License

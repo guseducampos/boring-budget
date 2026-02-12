@@ -1,3 +1,10 @@
+---
+summary: Stable error and warning code catalog used in JSON envelopes.
+read_when:
+  - Adding or changing error codes.
+  - Mapping failures/warnings to deterministic agent behavior.
+---
+
 # Error Code Catalog (Stable)
 
 Use these codes in `error.code` when `ok=false`.

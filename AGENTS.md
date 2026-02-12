@@ -1,225 +1,86 @@
 # AGENTS.md
 
-This file defines implementation rules for agents and contributors working on `boring-budget`.
+Execution policy for agents and contributors working on `boring-budget`.
+
+This file defines how to execute work. Product and technical behavior specifications live under `docs/`.
 
 ## 1) Mission
 
-Build an agent-friendly Go CLI for budgeting with:
-- SQLite persistence
-- deterministic JSON contracts for LLM usage
-- strong auditability and non-destructive data behavior
+Build and maintain an agent-friendly Go CLI for budgeting with deterministic behavior, strong auditability, and safe/non-destructive data handling.
 
-Primary references:
-- `docs/PRODUCT_PLAN.md`
-- `docs/TECHNICAL_BLUEPRINT.md`
+## 2) Source of Truth (`docs/`)
 
-If there is conflict, `TECHNICAL_BLUEPRINT.md` wins for engineering decisions.
+Treat `docs/` as the canonical source for specs and rules.
 
-## 2) Tech Stack (Locked)
+Ownership map:
+- Canonical product + technical spec: `docs/SPEC.md`
+- Docs navigation and read order: `docs/README.md`
+- Agent-facing JSON contracts, errors, and exit codes: `docs/contracts/*`
 
-- Language: Go
-- App type: CLI
-- Database: SQLite
-- Storage mode: local-first
-- Migrations: Goose (`github.com/pressly/goose/v3`)
-- Query layer: SQLC (`github.com/sqlc-dev/sqlc`)
+`AGENTS.md` is operational policy only. Do not define new product/technical behavior here.
 
-## 3) Architecture Rules
+## 3) Required Working Loop (Harness-Oriented)
 
-Use this package layout:
-- `cmd/boring-budget` (entrypoint)
-- `internal/cli` (commands, flags, rendering)
-- `internal/service` (use-cases)
-- `internal/domain` (business rules/entities)
-- `internal/store/sqlite` (queries/repos)
-  - `internal/store/sqlite/queries` (SQL source for SQLC)
-  - `internal/store/sqlite/sqlc` (generated SQLC code)
-- `internal/reporting` (summaries/grouping)
-- `internal/fx` (exchange-rate provider integration)
-- `internal/config` (onboarding/user settings)
-- `migrations` (SQL migrations)
-- `docs/contracts` (agent-facing command contracts)
+For non-trivial changes:
+1. Run `./scripts/docs-list.sh`, then read the relevant `docs/` sections.
+2. Identify impacted code paths and contracts.
+3. Implement the smallest complete change that satisfies the documented behavior.
+4. Run validation commands for touched layers.
+5. Update docs/contracts/changelog when behavior or interfaces change.
+6. Report what changed, what was validated, and any residual risk.
 
-Do not place business logic directly in CLI handlers.
+Treat tests and contract checks as acceptance criteria, not optional cleanup.
 
-## 4) Data and Domain Invariants (Mandatory)
+## 4) Change Boundaries
 
-- Money is stored only as:
-  - `amount_minor` (integer minor units)
-  - `currency_code` (ISO currency code)
-- No float/double storage for money.
-- Time is stored in UTC.
-- Output timestamps may be rendered in user-configured timezone.
-- Transaction date can be past/present/future.
-- Categories are optional for transactions:
-  - missing category => `Orphan`
-- Labels are many-to-many:
-  - one transaction can have multiple labels
+- Keep changes scoped to the requested outcome.
+- Avoid unrelated refactors in the same change.
+- Keep business logic out of CLI handlers (`internal/cli` should orchestrate, not decide).
+- Do not invent behavior that is not specified in `docs/`.
 
-## 5) Budget and Overspend Rules
+## 5) Validation Commands
 
-- Caps are monthly and apply to expenses only.
-- Overspend behavior is non-blocking:
-  - always persist the expense
-  - return warning when cap exceeded
-- Overspend checks also apply to future-dated expenses immediately.
-- Cap changes are allowed any time.
-- Every cap change must be recorded in cap history.
-- Reports over a month/range must show relevant cap changes.
+Baseline for most changes:
+- `gofmt -w <edited-files>.go`
+- `go test ./...`
 
-## 6) Reporting Rules
+Additional validation by change type:
+- SQL query changes (`internal/store/sqlite/queries/*.sql`):
+  - regenerate SQLC output (`sqlc generate`)
+  - run `go test ./...`
+- Migration changes (`migrations/*.sql`):
+  - run integration coverage (at minimum `go test ./...`)
+  - verify migration ordering and reversibility expectations
+- JSON contract/output changes:
+  - update `docs/contracts/*.json` where applicable
+  - update golden files under `internal/cli/testdata/json_contracts`
+  - run `go test ./...`
 
-All reports must separate:
-- earnings
-- spending
+## 6) Definition of Done
 
-Supported scopes:
-- custom range
-- monthly
-- bimonthly preset (range-derived)
-- quarterly preset (range-derived)
+A change is done only when all are true:
+- behavior matches relevant specs/rules under `docs/`
+- deterministic output/contracts are preserved where required
+- required tests pass for impacted layers (normally `go test ./...`)
+- docs/contracts are updated when externally observable behavior changes
+- `CHANGELOG.md` is updated for significant work under `Unreleased`
+- the change remains atomic and scoped
 
-Grouping options:
-- day
-- week
-- month
+## 7) Scope Control
 
-Filters must be combinable:
-- dates
-- categories
-- labels
+Do not add unrelated features without updating the relevant spec documents in `docs/` first.
 
-Label filter modes:
-- `ANY`
-- `ALL`
-- `NONE`
+If you need to change operating policy (how agents execute), update this file too.
 
-Balance views:
-- lifetime
-- date range
-- both
+## 8) Commit and Changelog Policy
 
-## 7) Multi-Currency and FX Rules
+- Keep commits atomic: one logical change per commit.
+- Do not mix unrelated feature/refactor/fix work.
+- Use clear commit messages describing that single unit.
+- Do not mark work complete without updating `CHANGELOG.md` for significant changes.
 
-- Default report behavior: grouped totals by currency.
-- Converted totals/net are supported when requested.
-- FX source: Frankfurter API (`api.frankfurter.app`) backed by ECB data.
-- Past/current transactions: use historical rate for transaction date.
-- Future-dated transactions: use latest available rate and mark as estimate.
-- Persist rate snapshots used for conversion to keep reports reproducible.
+## 9) Go Formatting Policy
 
-## 8) Delete and Lifecycle Rules
-
-Use soft deletes for core entities where defined.
-
-Non-destructive semantics:
-- deleting a category must not delete transactions
-  - affected transactions become orphaned
-- deleting a label must not delete transactions
-  - only label links are removed
-
-Maintain auditability:
-- record key create/update/delete actions in audit events.
-
-## 9) Database and Concurrency Rules
-
-- Enable SQLite WAL mode.
-- Use Goose for all schema migrations (no custom/raw migration runner logic).
-- Use SQLC for repository query execution (no hand-written CRUD SQL strings in repos).
-- Use DB transactions for all multi-step writes.
-- Serialize writes when needed for concurrent agent operations.
-- Add indexes for reporting/filter hot paths (date/type/category/label joins).
-
-## 10) CLI/Agent Contract Rules
-
-Every command must support:
-- `--output human`
-- `--output json`
-
-JSON response envelope must include:
-- `ok`
-- `data`
-- `warnings[]`
-- `error { code, message, details }`
-- `meta { api_version, timestamp_utc }`
-
-Provide and maintain:
-- stable exit-code table
-- error-code catalog
-- example JSON contracts for:
-  - `entry add`
-  - `cap set`
-  - `report monthly`
-
-No interactive prompts in core commands by default.
-
-## 11) Onboarding and Data Portability
-
-First run should support setup of:
-- default currency
-- display timezone
-- optional opening balance
-- optional current month cap
-
-Data portability requirements:
-- import: CSV and JSON
-- export: CSV and JSON
-- full backup/restore command
-
-## 12) Orphan Warning Policy
-
-Orphan entries are always allowed.
-
-Emit warning when either threshold is exceeded:
-- orphan count > 5 (in period)
-- orphan spending > 5% of:
-  - monthly cap, or
-  - month spending so far
-
-## 13) Testing and Quality Gates
-
-Minimum expectations:
-- unit tests for domain rules
-- integration tests against temp SQLite DB
-- golden tests for JSON output contracts
-
-Behavior must be deterministic for agent calls (stable ordering and schema).
-
-## 14) Implementation Order
-
-1. Foundation: scaffolding, config, migrations, WAL, JSON envelope.
-2. Core CRUD: transactions/categories/labels + non-destructive delete behavior.
-3. Caps/alerts: monthly caps, overspend warnings, cap history.
-4. Reports: scopes, grouping, combined filters, orphan warnings.
-5. FX: provider integration, rate snapshots, converted totals.
-6. Agent hardening: docs/contracts, exit/error catalogs, import/export, backup/restore.
-
-## 15) Scope Control
-
-Do not add unrelated features without updating:
-- `docs/PRODUCT_PLAN.md`
-- `docs/TECHNICAL_BLUEPRINT.md`
-- this `AGENTS.md` (if rules change)
-
-## 16) Git Commit Policy
-
-- Commits must be atomic:
-  - each commit should contain one logical change
-  - avoid mixing unrelated refactors/features/fixes in the same commit
-  - commit messages should clearly describe that single unit of change
-
-## 17) Changelog Policy
-
-- Keep `CHANGELOG.md` updated for all significant work.
-- Add entries under `Unreleased` for:
-  - new features
-  - behavior changes
-  - migration/schema changes
-  - notable fixes
-- Update changelog as part of the same delivery cycle before marking work complete.
-
-## 18) Go Formatting Policy
-
-- Use the default Go formatter (`gofmt`) for all Go code.
-- Run `gofmt` on every edited `.go` file before commit.
-- Do not introduce alternative formatting standards/tools that conflict with `gofmt`.
+- Use `gofmt` for all Go code.
+- Run `gofmt` on every edited `.go` file before completion.
+- Do not introduce conflicting formatting standards/tools.

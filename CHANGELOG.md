@@ -8,13 +8,16 @@ The format follows a lightweight Keep a Changelog style.
 
 ### Added
 
+- Agent-friendly docs navigation and metadata:
+  - `docs/README.md` (docs router)
+  - `docs/SPEC.md` (unified canonical spec)
+  - front matter (`summary`, `read_when`) in `docs/*.md` and `docs/contracts/*.md` markdown docs
+  - `scripts/docs-list.sh` (markdown docs discovery helper)
 - OpenClaw/Codex skill package for agent workflows:
   - `skills/boring-budget-agent/SKILL.md`
   - `skills/boring-budget-agent/references/workflows.md`
   - `skills/boring-budget-agent/agents/openai.yaml`
-- Product and architecture documentation:
-  - `docs/PRODUCT_PLAN.md`
-  - `docs/TECHNICAL_BLUEPRINT.md`
+- Documentation governance:
   - `AGENTS.md`
 - Project bootstrap docs:
   - `README.md`
@@ -177,8 +180,19 @@ The format follows a lightweight Keep a Changelog style.
 - Repository hygiene:
   - `.gitignore`
 
+### Removed
+
+- Legacy compatibility docs that previously mirrored the canonical spec:
+  - `docs/PRODUCT_PLAN.md`
+  - `docs/TECHNICAL_BLUEPRINT.md`
+
 ### Changed
 
+- `AGENTS.md` was rewritten as an execution-focused policy guide with:
+  - explicit guidance that specs and rules live under `docs/`, while `AGENTS.md` remains operational-only
+  - a harness-oriented implementation loop and definition of done
+  - clearer validation expectations for Go, SQLC, migrations, and JSON contract updates
+- Documentation structure now uses a single canonical spec (`docs/SPEC.md`) as the source for product and technical rules.
 - Release process now uses a dedicated manual tag-cut workflow (`.github/workflows/release-cut.yml`) via `workflow_dispatch` with semver bump options (`patch|minor|major|custom`), and the publish workflow (`.github/workflows/release.yml`) is now tag-push only.
 - CLI money input flags are now decimal-only with deterministic server-side conversion to canonical `amount_minor`:
   - `entry add|update`: `--amount`
