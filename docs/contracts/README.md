@@ -20,6 +20,7 @@ This folder defines deterministic JSON contract examples for agent integrations.
 Rules:
 - Fixtures are canonicalized in tests before comparison; JSON object key order is not semantically relevant.
 - Store and return money in minor units only (`amount_minor`) plus `currency_code`.
+- Human-facing commands may accept major-unit input flags (for example, `--amount`), but persisted and JSON contract amounts remain `amount_minor`.
 - Use ISO-8601 UTC timestamps (`...Z`).
 - Replace volatile timestamps in examples with `<timestamp_utc>`.
 - Keep arrays deterministically ordered (typically by date, then ID).

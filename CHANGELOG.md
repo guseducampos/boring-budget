@@ -179,6 +179,12 @@ The format follows a lightweight Keep a Changelog style.
 
 ### Changed
 
+- CLI money input flags are now decimal-only with deterministic server-side conversion to canonical `amount_minor`:
+  - `entry add|update`: `--amount`
+  - `cap set`: `--amount`
+  - `setup init`: `--opening-balance` and `--month-cap`
+  - currency-aware decimal precision handling (for example, JPY=0, BHD=3, CLF/UYW=4)
+- `skills/boring-budget-agent` docs now define deterministic amount input policy around decimal flags and CLI canonical conversion/validation to `amount_minor`.
 - SQLite migration bootstrap now falls back to embedded Goose SQL migrations when the default `migrations` directory is not available on disk (for example in Homebrew-installed binary-only environments), while still honoring explicit `--migrations-dir` overrides.
 - Release workflow now validates manual runs to require a `v*` tag ref before publishing.
 - `skills/boring-budget-agent` now supports binary-only runtime explicitly, including:

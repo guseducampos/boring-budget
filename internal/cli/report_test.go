@@ -22,11 +22,11 @@ func TestReportCommandJSONScopesAndFilters(t *testing.T) {
 	labelWorkID := insertTestLabel(t, db, "work")
 	labelHomeID := insertTestLabel(t, db, "home")
 
-	firstCap := executeCapCmdJSON(t, db, []string{"set", "--month", "2026-02", "--amount-minor", "1500", "--currency", "USD"})
+	firstCap := executeCapCmdJSON(t, db, []string{"set", "--month", "2026-02", "--amount", "15.00", "--currency", "USD"})
 	if ok, _ := firstCap["ok"].(bool); !ok {
 		t.Fatalf("expected first cap set ok=true payload=%v", firstCap)
 	}
-	secondCap := executeCapCmdJSON(t, db, []string{"set", "--month", "2026-02", "--amount-minor", "1700", "--currency", "USD"})
+	secondCap := executeCapCmdJSON(t, db, []string{"set", "--month", "2026-02", "--amount", "17.00", "--currency", "USD"})
 	if ok, _ := secondCap["ok"].(bool); !ok {
 		t.Fatalf("expected second cap set ok=true payload=%v", secondCap)
 	}
@@ -34,7 +34,7 @@ func TestReportCommandJSONScopesAndFilters(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "income",
-		"--amount-minor", "5000",
+		"--amount", "50.00",
 		"--currency", "USD",
 		"--date", "2026-02-01",
 		"--label-id", strconv.FormatInt(labelWorkID, 10),
@@ -42,7 +42,7 @@ func TestReportCommandJSONScopesAndFilters(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "1200",
+		"--amount", "12.00",
 		"--currency", "USD",
 		"--date", "2026-02-02",
 		"--category-id", strconv.FormatInt(categoryID, 10),
@@ -51,7 +51,7 @@ func TestReportCommandJSONScopesAndFilters(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "800",
+		"--amount", "8.00",
 		"--currency", "USD",
 		"--date", "2026-02-05",
 		"--label-id", strconv.FormatInt(labelHomeID, 10),
@@ -59,7 +59,7 @@ func TestReportCommandJSONScopesAndFilters(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "400",
+		"--amount", "4.00",
 		"--currency", "EUR",
 		"--date", "2026-02-10",
 		"--category-id", strconv.FormatInt(categoryID, 10),
@@ -67,7 +67,7 @@ func TestReportCommandJSONScopesAndFilters(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "income",
-		"--amount-minor", "1000",
+		"--amount", "10.00",
 		"--currency", "USD",
 		"--date", "2026-03-01",
 	}))
@@ -243,7 +243,7 @@ func TestReportCommandHumanOutput(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "income",
-		"--amount-minor", "100",
+		"--amount", "1.00",
 		"--currency", "USD",
 		"--date", "2026-02-01",
 	}))

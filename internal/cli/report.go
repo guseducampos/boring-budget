@@ -481,6 +481,9 @@ func codeFromReportingError(err error) string {
 		return "FX_RATE_UNAVAILABLE"
 	case errors.Is(err, domain.ErrInvalidEntryType),
 		errors.Is(err, domain.ErrInvalidAmountMinor),
+		errors.Is(err, domain.ErrInvalidAmount),
+		errors.Is(err, domain.ErrInvalidAmountPrecision),
+		errors.Is(err, domain.ErrAmountOverflow),
 		errors.Is(err, domain.ErrInvalidTransactionDate),
 		errors.Is(err, domain.ErrInvalidEntryID),
 		errors.Is(err, domain.ErrInvalidCategoryID),
@@ -517,8 +520,14 @@ func messageFromReportingError(err error) string {
 		return "required FX rate could not be resolved"
 	case errors.Is(err, domain.ErrInvalidEntryType):
 		return "type must be one of: income|expense"
+	case errors.Is(err, domain.ErrInvalidAmount):
+		return "amount must be a valid decimal number"
+	case errors.Is(err, domain.ErrInvalidAmountPrecision):
+		return "amount has too many decimal places for currency"
+	case errors.Is(err, domain.ErrAmountOverflow):
+		return "amount is too large"
 	case errors.Is(err, domain.ErrInvalidAmountMinor):
-		return "amount-minor must be greater than zero"
+		return "amount must be greater than zero"
 	case errors.Is(err, domain.ErrInvalidTransactionDate):
 		return "date/from/to must be RFC3339 or YYYY-MM-DD"
 	case errors.Is(err, domain.ErrInvalidEntryID):
@@ -532,7 +541,7 @@ func messageFromReportingError(err error) string {
 	case errors.Is(err, domain.ErrInvalidMonthKey):
 		return "month must use YYYY-MM"
 	case errors.Is(err, domain.ErrInvalidCapAmount):
-		return "amount-minor must be greater than zero"
+		return "amount must be greater than zero"
 	case errors.Is(err, domain.ErrInvalidReportScope):
 		return "report scope is invalid"
 	case errors.Is(err, domain.ErrInvalidReportGrouping):

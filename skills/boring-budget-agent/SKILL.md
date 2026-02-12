@@ -35,12 +35,15 @@ Use this skill to run `boring-budget` commands with deterministic behavior for A
 
 1. Prefer `--output json` for all automation flows.
 2. Treat `ok`, `warnings[]`, `error`, and `meta` as the canonical response envelope.
-3. Keep money in minor units only (`amount_minor`) with ISO currency codes.
-4. Use UTC-safe dates/timestamps for deterministic runs.
-5. Never assume deletes are destructive:
+3. Persist and validate money in minor units only (`amount_minor`) with ISO currency codes.
+4. For command inputs, use decimal amount flags (`--amount`, `--opening-balance`, `--month-cap`) and rely on CLI-side deterministic conversion/validation to canonical `amount_minor`.
+5. Legacy minor-unit input flags are removed from command input (`--amount-minor`, `--opening-balance-minor`, `--month-cap-minor`); do not use them.
+6. When updating entry amounts, send `--currency` together with `--amount` so conversion is explicit and deterministic.
+7. Use UTC-safe dates/timestamps for deterministic runs.
+8. Never assume deletes are destructive:
    - deleting a category orphans linked entries
    - deleting a label removes links only
-6. Treat overspend warnings as non-blocking writes (`CAP_EXCEEDED` warns, does not fail).
+9. Treat overspend warnings as non-blocking writes (`CAP_EXCEEDED` warns, does not fail).
 
 ## Standard execution flow
 
@@ -63,11 +66,15 @@ boring-budget category add "Food" --output json
 boring-budget label add "Recurring" --output json
 
 # Add income/expense entries
-boring-budget entry add --type income --amount-minor 350000 --currency USD --date 2026-02-01 --note "Salary" --output json
-boring-budget entry add --type expense --amount-minor 1250 --currency USD --date 2026-02-11 --category-id 1 --label-id 1 --note "Lunch" --output json
+boring-budget entry add --type income --amount 3500.00 --currency USD --date 2026-02-01 --note "Salary" --output json
+boring-budget entry add --type expense --amount 12.50 --currency USD --date 2026-02-11 --category-id 1 --label-id 1 --note "Lunch" --output json
+boring-budget entry add --type expense --amount 74.25 --currency USD --date 2026-02-11 --note "Coffee" --output json
 
 # Cap management (non-blocking overspend policy)
-boring-budget cap set --month 2026-02 --amount-minor 50000 --currency USD --output json
+boring-budget cap set --month 2026-02 --amount 500.00 --currency USD --output json
+
+# Setup with optional decimal onboarding values
+boring-budget setup init --default-currency USD --timezone America/New_York --opening-balance 1000.00 --month-cap 500.00 --output json
 
 # Reporting and balance
 boring-budget report monthly --month 2026-02 --group-by month --output json

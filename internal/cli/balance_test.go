@@ -23,7 +23,7 @@ func TestBalanceShowJSONScopesAndFilters(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "income",
-		"--amount-minor", "10000",
+		"--amount", "100.00",
 		"--currency", "USD",
 		"--date", "2026-01-10",
 		"--label-id", strconv.FormatInt(labelWorkID, 10),
@@ -31,7 +31,7 @@ func TestBalanceShowJSONScopesAndFilters(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "3000",
+		"--amount", "30.00",
 		"--currency", "USD",
 		"--date", "2026-02-05",
 		"--label-id", strconv.FormatInt(labelWorkID, 10),
@@ -39,14 +39,14 @@ func TestBalanceShowJSONScopesAndFilters(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "500",
+		"--amount", "5.00",
 		"--currency", "USD",
 		"--date", "2026-03-01",
 	}))
 	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "income",
-		"--amount-minor", "700",
+		"--amount", "7.00",
 		"--currency", "EUR",
 		"--date", "2026-02-10",
 	}))
@@ -160,7 +160,7 @@ func TestBalanceShowHumanOutput(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "income",
-		"--amount-minor", "100",
+		"--amount", "1.00",
 		"--currency", "USD",
 		"--date", "2026-02-01",
 	}))

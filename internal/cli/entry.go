@@ -21,7 +21,7 @@ const (
 
 type entryAddFlags struct {
 	entryType     string
-	amountMinor   int64
+	amount        string
 	currency      string
 	dateRaw       string
 	categoryIDRaw string
@@ -41,7 +41,7 @@ type entryListFlags struct {
 
 type entryUpdateFlags struct {
 	entryType     string
-	amountMinor   int64
+	amount        string
 	currency      string
 	dateRaw       string
 	categoryIDRaw string
@@ -125,7 +125,7 @@ func newEntryUpdateCmd(opts *RootOptions) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&flags.entryType, "type", "", "Optional entry type: income|expense")
-	cmd.Flags().Int64Var(&flags.amountMinor, "amount-minor", 0, "Optional amount in minor units (must be > 0)")
+	cmd.Flags().StringVar(&flags.amount, "amount", "", "Optional amount in major units (e.g. 74.25)")
 	cmd.Flags().StringVar(&flags.currency, "currency", "", "Optional ISO currency code (e.g. USD)")
 	cmd.Flags().StringVar(&flags.dateRaw, "date", "", "Optional transaction date (RFC3339 or YYYY-MM-DD)")
 	cmd.Flags().StringVar(&flags.categoryIDRaw, "category-id", "", "Optional category ID to set")
@@ -177,7 +177,7 @@ func newEntryAddCmd(opts *RootOptions) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&flags.entryType, "type", "", "Entry type: income|expense")
-	cmd.Flags().Int64Var(&flags.amountMinor, "amount-minor", 0, "Amount in minor units (must be > 0)")
+	cmd.Flags().StringVar(&flags.amount, "amount", "", "Amount in major units (e.g. 74.25)")
 	cmd.Flags().StringVar(&flags.currency, "currency", defaultEntryCurrency, "ISO currency code (e.g. USD)")
 	cmd.Flags().StringVar(&flags.dateRaw, "date", "", "Transaction date (RFC3339 or YYYY-MM-DD)")
 	cmd.Flags().StringVar(&flags.categoryIDRaw, "category-id", "", "Optional category ID")
@@ -325,6 +325,13 @@ func buildEntryAddInput(cmd *cobra.Command, flags *entryAddFlags) (domain.EntryA
 			Details: map[string]any{"field": "date"},
 		}
 	}
+	if cmd != nil && !cmd.Flags().Changed("amount") {
+		return domain.EntryAddInput{}, &entryCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "amount is required",
+			Details: map[string]any{"field": "amount"},
+		}
+	}
 
 	labelIDs, err := parsePositiveInt64List(flags.labelIDRaw, "label-id")
 	if err != nil {
@@ -340,9 +347,14 @@ func buildEntryAddInput(cmd *cobra.Command, flags *entryAddFlags) (domain.EntryA
 		categoryID = &id
 	}
 
+	amountMinor, err := domain.ParseMajorAmountToMinor(flags.amount, flags.currency)
+	if err != nil {
+		return domain.EntryAddInput{}, err
+	}
+
 	return domain.EntryAddInput{
 		Type:               flags.entryType,
-		AmountMinor:        flags.amountMinor,
+		AmountMinor:        amountMinor,
 		CurrencyCode:       flags.currency,
 		TransactionDateUTC: flags.dateRaw,
 		CategoryID:         categoryID,
@@ -381,6 +393,13 @@ func buildEntryUpdateInput(cmd *cobra.Command, id int64, flags *entryUpdateFlags
 			Details: map[string]any{"fields": []string{"clear-note", "note"}},
 		}
 	}
+	if cmd != nil && cmd.Flags().Changed("amount") && !cmd.Flags().Changed("currency") {
+		return domain.EntryUpdateInput{}, &entryCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "currency is required when amount is provided",
+			Details: map[string]any{"fields": []string{"amount", "currency"}},
+		}
+	}
 
 	input := domain.EntryUpdateInput{ID: id}
 	changed := false
@@ -390,9 +409,12 @@ func buildEntryUpdateInput(cmd *cobra.Command, id int64, flags *entryUpdateFlags
 		value := flags.entryType
 		input.Type = &value
 	}
-	if cmd != nil && cmd.Flags().Changed("amount-minor") {
+	if cmd != nil && cmd.Flags().Changed("amount") {
 		changed = true
-		value := flags.amountMinor
+		value, err := domain.ParseMajorAmountToMinor(flags.amount, flags.currency)
+		if err != nil {
+			return domain.EntryUpdateInput{}, err
+		}
 		input.AmountMinor = &value
 	}
 	if cmd != nil && cmd.Flags().Changed("currency") {
@@ -452,7 +474,7 @@ func buildEntryUpdateInput(cmd *cobra.Command, id int64, flags *entryUpdateFlags
 			Details: map[string]any{
 				"supported_fields": []string{
 					"type",
-					"amount-minor",
+					"amount",
 					"currency",
 					"date",
 					"category-id|clear-category",
@@ -617,6 +639,9 @@ func codeFromEntryError(err error) string {
 		return "INVALID_DATE_RANGE"
 	case errors.Is(err, domain.ErrInvalidEntryType),
 		errors.Is(err, domain.ErrInvalidAmountMinor),
+		errors.Is(err, domain.ErrInvalidAmount),
+		errors.Is(err, domain.ErrInvalidAmountPrecision),
+		errors.Is(err, domain.ErrAmountOverflow),
 		errors.Is(err, domain.ErrInvalidTransactionDate),
 		errors.Is(err, domain.ErrInvalidEntryID),
 		errors.Is(err, domain.ErrNoEntryUpdateFields),
@@ -645,8 +670,14 @@ func messageFromEntryError(err error) string {
 		return "from must be less than or equal to to"
 	case errors.Is(err, domain.ErrInvalidEntryType):
 		return "type must be one of: income|expense"
+	case errors.Is(err, domain.ErrInvalidAmount):
+		return "amount must be a valid decimal number"
+	case errors.Is(err, domain.ErrInvalidAmountPrecision):
+		return "amount has too many decimal places for currency"
+	case errors.Is(err, domain.ErrAmountOverflow):
+		return "amount is too large"
 	case errors.Is(err, domain.ErrInvalidAmountMinor):
-		return "amount-minor must be greater than zero"
+		return "amount must be greater than zero"
 	case errors.Is(err, domain.ErrInvalidTransactionDate):
 		return "date/from/to must be RFC3339 or YYYY-MM-DD"
 	case errors.Is(err, domain.ErrInvalidEntryID):

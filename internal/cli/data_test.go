@@ -47,7 +47,7 @@ func TestDataCommandJSONExportImportIdempotent(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, sourceDB, []string{
 		"add",
 		"--type", "income",
-		"--amount-minor", "9000",
+		"--amount", "90.00",
 		"--currency", "USD",
 		"--date", "2026-01-31",
 		"--note", "salary",
@@ -55,7 +55,7 @@ func TestDataCommandJSONExportImportIdempotent(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, sourceDB, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "2500",
+		"--amount", "25.00",
 		"--currency", "USD",
 		"--date", "2026-02-01T08:15:00-03:00",
 		"--note", "groceries",
@@ -158,7 +158,7 @@ func TestDataCommandCSVExportImportIdempotent(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, sourceDB, []string{
 		"add",
 		"--type", "income",
-		"--amount-minor", "9000",
+		"--amount", "90.00",
 		"--currency", "USD",
 		"--date", "2026-03-01",
 		"--note", "salary",
@@ -166,7 +166,7 @@ func TestDataCommandCSVExportImportIdempotent(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, sourceDB, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "2700",
+		"--amount", "27.00",
 		"--currency", "USD",
 		"--date", "2026-03-02",
 		"--label-id", strconv.FormatInt(sourceTripLabelID, 10),
@@ -383,7 +383,7 @@ func TestDataCommandJSONBackupRestore(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, opts.db, []string{
 		"add",
 		"--type", "income",
-		"--amount-minor", "1000",
+		"--amount", "10.00",
 		"--currency", "USD",
 		"--date", "2026-02-01",
 		"--note", "before-backup",
@@ -414,7 +414,7 @@ func TestDataCommandJSONBackupRestore(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, opts.db, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "200",
+		"--amount", "2.00",
 		"--currency", "USD",
 		"--date", "2026-02-02",
 		"--note", "after-backup",
@@ -485,7 +485,7 @@ func TestDataCommandJSONRestoreFailureRollsBackDatabase(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, opts.db, []string{
 		"add",
 		"--type", "income",
-		"--amount-minor", "1000",
+		"--amount", "10.00",
 		"--currency", "USD",
 		"--date", "2026-02-01",
 		"--note", "pre-rollback-check",
@@ -493,7 +493,7 @@ func TestDataCommandJSONRestoreFailureRollsBackDatabase(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, opts.db, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "250",
+		"--amount", "2.50",
 		"--currency", "USD",
 		"--date", "2026-02-02",
 		"--note", "still-present-after-failure",
@@ -558,7 +558,7 @@ func TestDataCommandJSONExportReport(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "income",
-		"--amount-minor", "12000",
+		"--amount", "120.00",
 		"--currency", "USD",
 		"--date", "2026-02-01",
 		"--note", "salary",
@@ -566,7 +566,7 @@ func TestDataCommandJSONExportReport(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "3000",
+		"--amount", "30.00",
 		"--currency", "USD",
 		"--date", "2026-02-05",
 		"--note", "rent",
@@ -647,7 +647,7 @@ func TestDataCommandCSVExportReportShape(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "income",
-		"--amount-minor", "12000",
+		"--amount", "120.00",
 		"--currency", "USD",
 		"--date", "2026-02-01",
 		"--note", "salary",
@@ -655,7 +655,7 @@ func TestDataCommandCSVExportReportShape(t *testing.T) {
 	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "3000",
+		"--amount", "30.00",
 		"--currency", "USD",
 		"--date", "2026-02-05",
 		"--note", "rent",

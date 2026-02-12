@@ -25,7 +25,7 @@ func TestEntryCommandJSONLifecycleAndFilters(t *testing.T) {
 	addOne := executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "1250",
+		"--amount", "12.50",
 		"--currency", "usd",
 		"--date", "2026-02-01",
 		"--category-id", strconv.FormatInt(categoryID, 10),
@@ -52,7 +52,7 @@ func TestEntryCommandJSONLifecycleAndFilters(t *testing.T) {
 	addTwo := executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "2100",
+		"--amount", "21.00",
 		"--currency", "USD",
 		"--date", "2026-02-02T10:30:00-03:00",
 		"--label-id", strconv.FormatInt(labelWorkID, 10),
@@ -65,7 +65,7 @@ func TestEntryCommandJSONLifecycleAndFilters(t *testing.T) {
 	addThree := executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "income",
-		"--amount-minor", "5000",
+		"--amount", "50.00",
 		"--currency", "USD",
 		"--date", "2026-02-03",
 	})
@@ -157,7 +157,7 @@ func TestEntryCommandJSONAddIncludesCapExceededWarning(t *testing.T) {
 	payload := executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "6200",
+		"--amount", "62.00",
 		"--currency", "USD",
 		"--date", "2026-02-10",
 	})
@@ -208,7 +208,7 @@ func TestEntryCommandJSONInvalidCurrencyCode(t *testing.T) {
 	payload := executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "100",
+		"--amount", "1.00",
 		"--currency", "US",
 		"--date", "2026-02-01",
 	})
@@ -220,6 +220,53 @@ func TestEntryCommandJSONInvalidCurrencyCode(t *testing.T) {
 	errPayload := mustMap(t, payload["error"])
 	if errPayload["code"].(string) != "INVALID_CURRENCY_CODE" {
 		t.Fatalf("expected INVALID_CURRENCY_CODE, got %v", errPayload["code"])
+	}
+}
+
+func TestEntryCommandJSONAddConvertsAmountToMinor(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	payload := executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "expense",
+		"--amount", "74.25",
+		"--currency", "USD",
+		"--date", "2026-02-01",
+	})
+	if ok, _ := payload["ok"].(bool); !ok {
+		t.Fatalf("expected ok=true payload=%v", payload)
+	}
+
+	data := mustMap(t, payload["data"])
+	entry := mustMap(t, data["entry"])
+	if got := int64(entry["amount_minor"].(float64)); got != 7425 {
+		t.Fatalf("expected amount_minor 7425, got %d", got)
+	}
+}
+
+func TestEntryCommandJSONAddRequiresAmount(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	payload := executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "expense",
+		"--currency", "USD",
+		"--date", "2026-02-01",
+	})
+
+	if ok, _ := payload["ok"].(bool); ok {
+		t.Fatalf("expected ok=false payload=%v", payload)
+	}
+
+	errPayload := mustMap(t, payload["error"])
+	if errPayload["code"].(string) != "INVALID_ARGUMENT" {
+		t.Fatalf("expected INVALID_ARGUMENT, got %v", errPayload["code"])
 	}
 }
 
@@ -249,7 +296,7 @@ func TestEntryCommandJSONNotFoundCategory(t *testing.T) {
 	payload := executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "100",
+		"--amount", "1.00",
 		"--currency", "USD",
 		"--date", "2026-02-01",
 		"--category-id", "99999",
@@ -315,7 +362,7 @@ func TestEntryCommandJSONUpdateLifecycle(t *testing.T) {
 	addPayload := executeEntryCmdJSON(t, db, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "1200",
+		"--amount", "12.00",
 		"--currency", "USD",
 		"--date", "2026-02-01",
 		"--category-id", strconv.FormatInt(categoryA, 10),
@@ -331,7 +378,7 @@ func TestEntryCommandJSONUpdateLifecycle(t *testing.T) {
 	updatePayload := executeEntryCmdJSON(t, db, []string{
 		"update", strconv.FormatInt(entryID, 10),
 		"--type", "income",
-		"--amount-minor", "3500",
+		"--amount", "35.00",
 		"--currency", "EUR",
 		"--date", "2026-02-05",
 		"--category-id", strconv.FormatInt(categoryB, 10),
@@ -395,6 +442,77 @@ func TestEntryCommandJSONUpdateRequiresFields(t *testing.T) {
 	}
 }
 
+func TestEntryCommandJSONUpdateConvertsAmountToMinor(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	addPayload := executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "expense",
+		"--amount", "12.00",
+		"--currency", "USD",
+		"--date", "2026-02-01",
+	})
+	if ok, _ := addPayload["ok"].(bool); !ok {
+		t.Fatalf("expected add ok=true payload=%v", addPayload)
+	}
+	addData := mustMap(t, addPayload["data"])
+	entryID := int64(mustMap(t, addData["entry"])["id"].(float64))
+
+	updatePayload := executeEntryCmdJSON(t, db, []string{
+		"update", strconv.FormatInt(entryID, 10),
+		"--amount", "35.50",
+		"--currency", "EUR",
+	})
+	if ok, _ := updatePayload["ok"].(bool); !ok {
+		t.Fatalf("expected update ok=true payload=%v", updatePayload)
+	}
+
+	updateData := mustMap(t, updatePayload["data"])
+	updated := mustMap(t, updateData["entry"])
+	if got := int64(updated["amount_minor"].(float64)); got != 3550 {
+		t.Fatalf("expected amount_minor 3550, got %d", got)
+	}
+	if updated["currency_code"].(string) != "EUR" {
+		t.Fatalf("expected currency EUR, got %v", updated["currency_code"])
+	}
+}
+
+func TestEntryCommandJSONUpdateAmountRequiresCurrency(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	addPayload := executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "expense",
+		"--amount", "12.00",
+		"--currency", "USD",
+		"--date", "2026-02-01",
+	})
+	if ok, _ := addPayload["ok"].(bool); !ok {
+		t.Fatalf("expected add ok=true payload=%v", addPayload)
+	}
+	addData := mustMap(t, addPayload["data"])
+	entryID := int64(mustMap(t, addData["entry"])["id"].(float64))
+
+	updatePayload := executeEntryCmdJSON(t, db, []string{
+		"update", strconv.FormatInt(entryID, 10),
+		"--amount", "35.50",
+	})
+	if ok, _ := updatePayload["ok"].(bool); ok {
+		t.Fatalf("expected ok=false payload=%v", updatePayload)
+	}
+
+	errPayload := mustMap(t, updatePayload["error"])
+	if errPayload["code"].(string) != "INVALID_ARGUMENT" {
+		t.Fatalf("expected INVALID_ARGUMENT, got %v", errPayload["code"])
+	}
+}
+
 func TestEntryCommandHumanOutput(t *testing.T) {
 	t.Parallel()
 
@@ -404,7 +522,7 @@ func TestEntryCommandHumanOutput(t *testing.T) {
 	out := executeEntryCmdRaw(t, db, output.FormatHuman, []string{
 		"add",
 		"--type", "expense",
-		"--amount-minor", "2500",
+		"--amount", "25.00",
 		"--currency", "USD",
 		"--date", "2026-02-01",
 	})
