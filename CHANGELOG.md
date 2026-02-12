@@ -179,6 +179,7 @@ The format follows a lightweight Keep a Changelog style.
 
 ### Changed
 
+- Release process now uses a dedicated manual tag-cut workflow (`.github/workflows/release-cut.yml`) via `workflow_dispatch` with semver bump options (`patch|minor|major|custom`), and the publish workflow (`.github/workflows/release.yml`) is now tag-push only.
 - CLI money input flags are now decimal-only with deterministic server-side conversion to canonical `amount_minor`:
   - `entry add|update`: `--amount`
   - `cap set`: `--amount`
