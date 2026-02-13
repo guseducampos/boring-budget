@@ -57,6 +57,26 @@ Use this reference when executing common `boring-budget` tasks repeatedly.
 4. Balance:
    - `balance show --scope lifetime|range|both ... --output json`
 
+## 4.1) Card, payment-method, and debt flows
+
+1. Card lifecycle:
+   - `card add --nickname ... --last4 .... --brand ... --card-type credit|debit [--due-day N] --output json`
+   - `card list --output json`
+   - `card update <id> ... --output json`
+   - `card delete <id> --output json`
+2. Payment capture on expenses:
+   - default is `cash` when `--payment-method` is omitted
+   - for card expenses: `entry add ... --payment-method card --card-id <id> --output json`
+3. Due-date queries:
+   - `card due show --card-id <id> [--as-of YYYY-MM-DD] --output json`
+   - `card due list [--as-of YYYY-MM-DD] --output json`
+4. Debt and payments:
+   - `card debt show --card-id <id> --output json`
+   - `card payment add --card-id <id> --amount ... --currency ... [--note ...] --output json`
+5. Payment-focused reports:
+   - `report range --from ... --to ... --payment-method cash|card|credit|debit --output json`
+   - optional selectors: `--card-id`, `--card-nickname`, `--card-lookup`
+
 ## 5) Data portability and recovery
 
 1. Export:

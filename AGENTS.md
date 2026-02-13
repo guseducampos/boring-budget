@@ -63,6 +63,7 @@ A change is done only when all are true:
 - deterministic output/contracts are preserved where required
 - required tests pass for impacted layers (normally `go test ./...`)
 - docs/contracts are updated when externally observable behavior changes
+- `skills/boring-budget-agent/*` is updated when CLI API command surfaces are added or changed in a breaking way
 - `CHANGELOG.md` is updated for significant work under `Unreleased`
 - the change remains atomic and scoped
 

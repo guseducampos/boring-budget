@@ -69,6 +69,8 @@ boring-budget label add "Recurring" --output json
 boring-budget entry add --type income --amount 3500.00 --currency USD --date 2026-02-01 --note "Salary" --output json
 boring-budget entry add --type expense --amount 12.50 --currency USD --date 2026-02-11 --category-id 1 --label-id 1 --note "Lunch" --output json
 boring-budget entry add --type expense --amount 74.25 --currency USD --date 2026-02-11 --note "Coffee" --output json
+boring-budget entry add --type expense --amount 95.00 --currency USD --date 2026-02-11 --payment-method card --card-id 1 --note "Groceries" --output json
+boring-budget entry list --payment-method credit --from 2026-02-01 --to 2026-02-28 --output json
 
 # Cap management (non-blocking overspend policy)
 boring-budget cap set --month 2026-02 --amount 500.00 --currency USD --output json
@@ -76,8 +78,17 @@ boring-budget cap set --month 2026-02 --amount 500.00 --currency USD --output js
 # Setup with optional decimal onboarding values
 boring-budget setup init --default-currency USD --timezone America/New_York --opening-balance 1000.00 --month-cap 500.00 --output json
 
+# Card management and debt tracking
+boring-budget card add --nickname "Main Credit" --last4 1234 --brand VISA --card-type credit --due-day 15 --description "Primary card" --output json
+boring-budget card list --output json
+boring-budget card update 1 --nickname "Main Visa" --output json
+boring-budget card due show --card-id 1 --as-of 2026-02-10 --output json
+boring-budget card debt show --card-id 1 --output json
+boring-budget card payment add --card-id 1 --amount 200.00 --currency USD --note "Statement payment" --output json
+
 # Reporting and balance
 boring-budget report monthly --month 2026-02 --group-by month --output json
+boring-budget report range --from 2026-02-01 --to 2026-02-28 --payment-method card --card-id 1 --output json
 boring-budget balance show --scope both --from 2026-02-01 --to 2026-02-28 --output json
 
 # Portability
