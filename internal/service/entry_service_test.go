@@ -45,6 +45,14 @@ func (s *entryCapLookupStub) GetExpenseTotalByMonthAndCurrency(ctx context.Conte
 	return s.expenseTotalFn(ctx, monthKey, currencyCode)
 }
 
+type entryCardResolverStub struct {
+	resolveFn func(ctx context.Context, selector domain.CardSelector) (domain.Card, error)
+}
+
+func (s *entryCardResolverStub) Resolve(ctx context.Context, selector domain.CardSelector) (domain.Card, error) {
+	return s.resolveFn(ctx, selector)
+}
+
 func TestNewEntryServiceRequiresRepo(t *testing.T) {
 	t.Parallel()
 
@@ -511,5 +519,125 @@ func TestEntryServiceUpdateWithWarningsReturnsCapExceededWarning(t *testing.T) {
 	}
 	if len(result.Warnings) != 1 || result.Warnings[0].Code != domain.WarningCodeCapExceeded {
 		t.Fatalf("expected CAP_EXCEEDED warning, got %+v", result.Warnings)
+	}
+}
+
+func TestEntryServiceAddDefaultsExpensePaymentMethodToCash(t *testing.T) {
+	t.Parallel()
+
+	svc, err := NewEntryService(&entryRepoStub{
+		addFn: func(ctx context.Context, input domain.EntryAddInput) (domain.Entry, error) {
+			if input.PaymentMethod != domain.PaymentMethodCash {
+				t.Fatalf("expected default payment method cash, got %q", input.PaymentMethod)
+			}
+			if input.PaymentCardID != nil {
+				t.Fatalf("expected no payment card id for default cash, got %v", input.PaymentCardID)
+			}
+			return domain.Entry{
+				ID:                 1,
+				Type:               input.Type,
+				AmountMinor:        input.AmountMinor,
+				CurrencyCode:       input.CurrencyCode,
+				TransactionDateUTC: input.TransactionDateUTC,
+				PaymentMethod:      input.PaymentMethod,
+			}, nil
+		},
+		updateFn: func(context.Context, domain.EntryUpdateInput) (domain.Entry, error) { return domain.Entry{}, nil },
+		listFn:   func(context.Context, domain.EntryListFilter) ([]domain.Entry, error) { return nil, nil },
+		deleteFn: func(context.Context, int64) (domain.EntryDeleteResult, error) { return domain.EntryDeleteResult{}, nil },
+	})
+	if err != nil {
+		t.Fatalf("new entry service: %v", err)
+	}
+
+	_, err = svc.Add(context.Background(), domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        1200,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-11",
+	})
+	if err != nil {
+		t.Fatalf("add entry: %v", err)
+	}
+}
+
+func TestEntryServiceAddResolvesCardNickname(t *testing.T) {
+	t.Parallel()
+
+	cardID := int64(9)
+	svc, err := NewEntryService(
+		&entryRepoStub{
+			addFn: func(ctx context.Context, input domain.EntryAddInput) (domain.Entry, error) {
+				if input.PaymentMethod != domain.PaymentMethodCard {
+					t.Fatalf("expected payment method card, got %q", input.PaymentMethod)
+				}
+				if input.PaymentCardID == nil || *input.PaymentCardID != cardID {
+					t.Fatalf("expected resolved payment card id %d, got %v", cardID, input.PaymentCardID)
+				}
+				return domain.Entry{
+					ID:                 2,
+					Type:               input.Type,
+					AmountMinor:        input.AmountMinor,
+					CurrencyCode:       input.CurrencyCode,
+					TransactionDateUTC: input.TransactionDateUTC,
+					PaymentMethod:      input.PaymentMethod,
+					PaymentCardID:      input.PaymentCardID,
+				}, nil
+			},
+			updateFn: func(context.Context, domain.EntryUpdateInput) (domain.Entry, error) { return domain.Entry{}, nil },
+			listFn:   func(context.Context, domain.EntryListFilter) ([]domain.Entry, error) { return nil, nil },
+			deleteFn: func(context.Context, int64) (domain.EntryDeleteResult, error) { return domain.EntryDeleteResult{}, nil },
+		},
+		WithEntryCardResolver(&entryCardResolverStub{
+			resolveFn: func(ctx context.Context, selector domain.CardSelector) (domain.Card, error) {
+				if selector.Nickname != "primary credit" {
+					t.Fatalf("expected nickname selector primary credit, got %+v", selector)
+				}
+				return domain.Card{
+					ID:       cardID,
+					Nickname: "primary credit",
+				}, nil
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("new entry service: %v", err)
+	}
+
+	_, err = svc.Add(context.Background(), domain.EntryAddInput{
+		Type:                domain.EntryTypeExpense,
+		AmountMinor:         3300,
+		CurrencyCode:        "USD",
+		TransactionDateUTC:  "2026-02-11",
+		PaymentMethod:       domain.PaymentMethodCard,
+		PaymentCardNickname: "primary credit",
+	})
+	if err != nil {
+		t.Fatalf("add entry: %v", err)
+	}
+}
+
+func TestEntryServiceAddRejectsIncomePaymentMethod(t *testing.T) {
+	t.Parallel()
+
+	svc, err := NewEntryService(&entryRepoStub{
+		addFn:    func(context.Context, domain.EntryAddInput) (domain.Entry, error) { return domain.Entry{}, nil },
+		updateFn: func(context.Context, domain.EntryUpdateInput) (domain.Entry, error) { return domain.Entry{}, nil },
+		listFn:   func(context.Context, domain.EntryListFilter) ([]domain.Entry, error) { return nil, nil },
+		deleteFn: func(context.Context, int64) (domain.EntryDeleteResult, error) { return domain.EntryDeleteResult{}, nil },
+	})
+	if err != nil {
+		t.Fatalf("new entry service: %v", err)
+	}
+
+	_, err = svc.Add(context.Background(), domain.EntryAddInput{
+		Type:               domain.EntryTypeIncome,
+		AmountMinor:        1200,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-11",
+		PaymentMethod:      domain.PaymentMethodCash,
+	})
+	if !errors.Is(err, domain.ErrPaymentNotAllowed) {
+		t.Fatalf("expected ErrPaymentNotAllowed, got %v", err)
 	}
 }

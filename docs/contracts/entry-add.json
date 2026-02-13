@@ -10,6 +10,7 @@
         1
       ],
       "note": "coffee",
+      "payment_method": "cash",
       "transaction_date_utc": "2026-02-01T11:15:00Z",
       "type": "expense",
       "updated_at_utc": "<timestamp_utc>"

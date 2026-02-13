@@ -1,0 +1,22 @@
+{
+  "data": {
+    "card": {
+      "brand": "VISA",
+      "card_type": "credit",
+      "created_at_utc": "<timestamp_utc>",
+      "description": "Primary credit card",
+      "due_day": 15,
+      "id": 1,
+      "last4": "1234",
+      "nickname": "Main Credit",
+      "updated_at_utc": "<timestamp_utc>"
+    }
+  },
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "<timestamp_utc>"
+  },
+  "ok": true,
+  "warnings": []
+}

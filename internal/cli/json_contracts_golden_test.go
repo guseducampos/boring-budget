@@ -146,6 +146,121 @@ func TestJSONContractsGoldenCoreCommands(t *testing.T) {
 		assertJSONContractGolden(t, "entry_update.golden.json", raw)
 	})
 
+	t.Run("card_add", func(t *testing.T) {
+		db := newCLITestDB(t)
+		t.Cleanup(func() { _ = db.Close() })
+
+		raw := executeCardCmdRaw(t, db, output.FormatJSON, []string{
+			"add",
+			"--nickname", "Main Credit",
+			"--description", "Primary credit card",
+			"--last4", "1234",
+			"--brand", "VISA",
+			"--card-type", "credit",
+			"--due-day", "15",
+		})
+
+		assertJSONContractGolden(t, "card_add.golden.json", raw)
+	})
+
+	t.Run("card_due_show", func(t *testing.T) {
+		db := newCLITestDB(t)
+		t.Cleanup(func() { _ = db.Close() })
+
+		addPayload := executeCardCmdJSON(t, db, []string{
+			"add",
+			"--nickname", "Main Credit",
+			"--description", "Primary credit card",
+			"--last4", "1234",
+			"--brand", "VISA",
+			"--card-type", "credit",
+			"--due-day", "15",
+		})
+		if ok, _ := addPayload["ok"].(bool); !ok {
+			t.Fatalf("expected card add ok=true payload=%v", addPayload)
+		}
+
+		raw := executeCardCmdRaw(t, db, output.FormatJSON, []string{
+			"due", "show",
+			"--card-id", "1",
+			"--as-of", "2026-02-10",
+		})
+
+		assertJSONContractGolden(t, "card_due_show.golden.json", raw)
+	})
+
+	t.Run("card_debt_show", func(t *testing.T) {
+		db := newCLITestDB(t)
+		t.Cleanup(func() { _ = db.Close() })
+
+		addPayload := executeCardCmdJSON(t, db, []string{
+			"add",
+			"--nickname", "Main Credit",
+			"--description", "Primary credit card",
+			"--last4", "1234",
+			"--brand", "VISA",
+			"--card-type", "credit",
+			"--due-day", "15",
+		})
+		if ok, _ := addPayload["ok"].(bool); !ok {
+			t.Fatalf("expected card add ok=true payload=%v", addPayload)
+		}
+
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "expense",
+			"--amount", "20.00",
+			"--currency", "USD",
+			"--date", "2026-02-01",
+			"--payment-method", "card",
+			"--card-id", "1",
+		}))
+
+		raw := executeCardCmdRaw(t, db, output.FormatJSON, []string{
+			"debt", "show",
+			"--card-id", "1",
+		})
+
+		assertJSONContractGolden(t, "card_debt_show.golden.json", raw)
+	})
+
+	t.Run("card_payment_add", func(t *testing.T) {
+		db := newCLITestDB(t)
+		t.Cleanup(func() { _ = db.Close() })
+
+		addPayload := executeCardCmdJSON(t, db, []string{
+			"add",
+			"--nickname", "Main Credit",
+			"--description", "Primary credit card",
+			"--last4", "1234",
+			"--brand", "VISA",
+			"--card-type", "credit",
+			"--due-day", "15",
+		})
+		if ok, _ := addPayload["ok"].(bool); !ok {
+			t.Fatalf("expected card add ok=true payload=%v", addPayload)
+		}
+
+		mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+			"add",
+			"--type", "expense",
+			"--amount", "20.00",
+			"--currency", "USD",
+			"--date", "2026-02-01",
+			"--payment-method", "card",
+			"--card-id", "1",
+		}))
+
+		raw := executeCardCmdRaw(t, db, output.FormatJSON, []string{
+			"payment", "add",
+			"--card-id", "1",
+			"--amount", "5.00",
+			"--currency", "USD",
+		})
+
+		assertJSONContractGolden(t, "card_payment_add.golden.json", raw)
+	})
+
 	t.Run("report_monthly", func(t *testing.T) {
 		db := newCLITestDB(t)
 		t.Cleanup(func() { _ = db.Close() })

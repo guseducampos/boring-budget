@@ -426,6 +426,74 @@ func TestEntryCommandJSONUpdateLifecycle(t *testing.T) {
 	}
 }
 
+func TestEntryCommandJSONPaymentMethodAndCardFilters(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	creditCardID := insertTestCard(t, db, "Credit One", "Travel card", "9999", "VISA", "credit", 18)
+
+	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "expense",
+		"--amount", "10.00",
+		"--currency", "USD",
+		"--date", "2026-02-01",
+	}))
+	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "expense",
+		"--amount", "25.00",
+		"--currency", "USD",
+		"--date", "2026-02-02",
+		"--payment-method", "card",
+		"--card-id", strconv.FormatInt(creditCardID, 10),
+	}))
+	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "income",
+		"--amount", "100.00",
+		"--currency", "USD",
+		"--date", "2026-02-03",
+	}))
+
+	cashOnly := executeEntryCmdJSON(t, db, []string{"list", "--payment-method", "cash"})
+	cashData := mustMap(t, cashOnly["data"])
+	if int(cashData["count"].(float64)) != 1 {
+		t.Fatalf("expected cash-filter count 1, got %v", cashData["count"])
+	}
+	cashEntry := mustMap(t, mustAnySlice(t, cashData["entries"])[0])
+	if cashEntry["payment_method"].(string) != "cash" {
+		t.Fatalf("expected cash payment method, got %v", cashEntry["payment_method"])
+	}
+
+	cardOnly := executeEntryCmdJSON(t, db, []string{"list", "--payment-method", "card"})
+	cardData := mustMap(t, cardOnly["data"])
+	if int(cardData["count"].(float64)) != 1 {
+		t.Fatalf("expected card-filter count 1, got %v", cardData["count"])
+	}
+	cardEntry := mustMap(t, mustAnySlice(t, cardData["entries"])[0])
+	if int64(cardEntry["payment_card_id"].(float64)) != creditCardID {
+		t.Fatalf("expected payment_card_id %d, got %v", creditCardID, cardEntry["payment_card_id"])
+	}
+
+	cardByNickname := executeEntryCmdJSON(t, db, []string{"list", "--card-nickname", "credit one"})
+	cardByNicknameData := mustMap(t, cardByNickname["data"])
+	if int(cardByNicknameData["count"].(float64)) != 1 {
+		t.Fatalf("expected card-nickname filter count 1, got %v", cardByNicknameData["count"])
+	}
+
+	invalid := executeEntryCmdJSON(t, db, []string{"list", "--payment-method", "cash", "--card-id", strconv.FormatInt(creditCardID, 10)})
+	if ok, _ := invalid["ok"].(bool); ok {
+		t.Fatalf("expected invalid cash+card selector payload, got %v", invalid)
+	}
+	errPayload := mustMap(t, invalid["error"])
+	if errPayload["code"].(string) != "INVALID_ARGUMENT" {
+		t.Fatalf("expected INVALID_ARGUMENT, got %v", errPayload["code"])
+	}
+}
+
 func TestEntryCommandJSONUpdateRequiresFields(t *testing.T) {
 	t.Parallel()
 
@@ -591,6 +659,36 @@ func insertTestLabel(t *testing.T, db *sql.DB, name string) int64 {
 	id, err := result.LastInsertId()
 	if err != nil {
 		t.Fatalf("read inserted label id: %v", err)
+	}
+
+	return id
+}
+
+func insertTestCard(t *testing.T, db *sql.DB, nickname, description, last4, brand, cardType string, dueDay int64) int64 {
+	t.Helper()
+
+	dueDayValue := sql.NullInt64{}
+	if dueDay > 0 {
+		dueDayValue = sql.NullInt64{Int64: dueDay, Valid: true}
+	}
+
+	result, err := db.ExecContext(
+		context.Background(),
+		`INSERT INTO cards (nickname, description, last4, brand, card_type, due_day) VALUES (?, ?, ?, ?, ?, ?);`,
+		nickname,
+		description,
+		last4,
+		brand,
+		cardType,
+		dueDayValue,
+	)
+	if err != nil {
+		t.Fatalf("insert test card: %v", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("read inserted card id: %v", err)
 	}
 
 	return id

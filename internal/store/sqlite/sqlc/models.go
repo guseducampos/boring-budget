@@ -18,12 +18,36 @@ type AuditEvent struct {
 	CreatedAtUtc string         `json:"created_at_utc"`
 }
 
+type Card struct {
+	ID           int64          `json:"id"`
+	Nickname     string         `json:"nickname"`
+	Description  sql.NullString `json:"description"`
+	Last4        string         `json:"last4"`
+	Brand        string         `json:"brand"`
+	CardType     string         `json:"card_type"`
+	DueDay       sql.NullInt64  `json:"due_day"`
+	CreatedAtUtc string         `json:"created_at_utc"`
+	UpdatedAtUtc string         `json:"updated_at_utc"`
+	DeletedAtUtc sql.NullString `json:"deleted_at_utc"`
+}
+
 type Category struct {
 	ID           int64          `json:"id"`
 	Name         string         `json:"name"`
 	CreatedAtUtc string         `json:"created_at_utc"`
 	UpdatedAtUtc string         `json:"updated_at_utc"`
 	DeletedAtUtc sql.NullString `json:"deleted_at_utc"`
+}
+
+type CreditLiabilityEvent struct {
+	ID                     int64          `json:"id"`
+	CardID                 int64          `json:"card_id"`
+	CurrencyCode           string         `json:"currency_code"`
+	EventType              string         `json:"event_type"`
+	AmountMinorSigned      int64          `json:"amount_minor_signed"`
+	ReferenceTransactionID sql.NullInt64  `json:"reference_transaction_id"`
+	Note                   sql.NullString `json:"note"`
+	CreatedAtUtc           string         `json:"created_at_utc"`
 }
 
 type FxRateSnapshot struct {
@@ -93,4 +117,12 @@ type TransactionLabel struct {
 	LabelID       int64          `json:"label_id"`
 	CreatedAtUtc  string         `json:"created_at_utc"`
 	DeletedAtUtc  sql.NullString `json:"deleted_at_utc"`
+}
+
+type TransactionPaymentMethod struct {
+	TransactionID int64         `json:"transaction_id"`
+	MethodType    string        `json:"method_type"`
+	CardID        sql.NullInt64 `json:"card_id"`
+	CreatedAtUtc  string        `json:"created_at_utc"`
+	UpdatedAtUtc  string        `json:"updated_at_utc"`
 }

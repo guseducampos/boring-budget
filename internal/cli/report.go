@@ -32,6 +32,10 @@ type reportCommonFlags struct {
 	labelIDRaw    []string
 	labelMode     string
 	convertTo     string
+	paymentMethod string
+	cardIDRaw     string
+	cardNickname  string
+	cardLookup    string
 }
 
 type reportRangeFlags struct {
@@ -176,6 +180,10 @@ func bindReportCommonFlags(cmd *cobra.Command, flags *reportCommonFlags) {
 	cmd.Flags().StringArrayVar(&flags.labelIDRaw, "label-id", nil, "Filter by label ID (repeatable)")
 	cmd.Flags().StringVar(&flags.labelMode, "label-mode", "any", "Label filter mode: any|all|none")
 	cmd.Flags().StringVar(&flags.convertTo, "convert-to", "", "Optional target currency (ISO code) for converted totals")
+	cmd.Flags().StringVar(&flags.paymentMethod, "payment-method", "", "Payment filter: cash|card|credit|debit")
+	cmd.Flags().StringVar(&flags.cardIDRaw, "card-id", "", "Filter by card ID")
+	cmd.Flags().StringVar(&flags.cardNickname, "card-nickname", "", "Filter by exact card nickname")
+	cmd.Flags().StringVar(&flags.cardLookup, "card-lookup", "", "Filter by card lookup text")
 }
 
 func runReportCommand(cmd *cobra.Command, args []string, opts *RootOptions, flags reportCommonFlags, period reportPeriodInput) error {
@@ -229,9 +237,15 @@ func newReportService(opts *RootOptions) (*service.ReportService, error) {
 
 	categoryRepo := sqlitestore.NewCategoryRepo(opts.db)
 	settingsRepo := sqlitestore.NewSettingsRepo(opts.db)
+	cardRepo := sqlitestore.NewCardRepo(opts.db)
+	cardSvc, err := service.NewCardService(cardRepo)
+	if err != nil {
+		return nil, fmt.Errorf("card service init: %w", err)
+	}
 	reportOptions := []service.ReportServiceOption{
 		service.WithReportSettingsReader(settingsRepo),
 		service.WithReportCategoryReader(categoryRepo),
+		service.WithReportCardDebtReader(cardSvc),
 	}
 
 	reportSvc, err := service.NewReportService(entrySvc, capSvc, reportOptions...)
@@ -272,6 +286,14 @@ func buildReportRequest(flags reportCommonFlags, period reportPeriodInput) (serv
 	if err != nil {
 		return service.ReportRequest{}, err
 	}
+	var paymentCardID *int64
+	if strings.TrimSpace(flags.cardIDRaw) != "" {
+		id, err := parsePositiveID(flags.cardIDRaw, "card-id")
+		if err != nil {
+			return service.ReportRequest{}, err
+		}
+		paymentCardID = &id
+	}
 
 	return service.ReportRequest{
 		Period: domain.ReportPeriodInput{
@@ -280,11 +302,15 @@ func buildReportRequest(flags reportCommonFlags, period reportPeriodInput) (serv
 			DateFromUTC: period.FromUTC,
 			DateToUTC:   period.ToUTC,
 		},
-		Grouping:   grouping,
-		CategoryID: categoryID,
-		LabelIDs:   labelIDs,
-		LabelMode:  flags.labelMode,
-		ConvertTo:  flags.convertTo,
+		Grouping:            grouping,
+		CategoryID:          categoryID,
+		LabelIDs:            labelIDs,
+		LabelMode:           flags.labelMode,
+		ConvertTo:           flags.convertTo,
+		PaymentMethod:       flags.paymentMethod,
+		PaymentCardID:       paymentCardID,
+		PaymentCardNickname: flags.cardNickname,
+		PaymentCardLookup:   flags.cardLookup,
 	}, nil
 }
 
@@ -493,14 +519,22 @@ func codeFromReportingError(err error) string {
 		errors.Is(err, domain.ErrInvalidCapAmount),
 		errors.Is(err, domain.ErrInvalidReportScope),
 		errors.Is(err, domain.ErrInvalidReportGrouping),
-		errors.Is(err, domain.ErrInvalidReportPeriod):
+		errors.Is(err, domain.ErrInvalidReportPeriod),
+		errors.Is(err, domain.ErrInvalidPaymentMethod),
+		errors.Is(err, domain.ErrInvalidPaymentFilter),
+		errors.Is(err, domain.ErrCardSelectorConflict),
+		errors.Is(err, domain.ErrCardNotAllowed),
+		errors.Is(err, domain.ErrCardRequired):
 		return "INVALID_ARGUMENT"
 	case errors.Is(err, domain.ErrCategoryNotFound),
 		errors.Is(err, domain.ErrLabelNotFound),
 		errors.Is(err, domain.ErrEntryNotFound),
 		errors.Is(err, domain.ErrCapNotFound),
-		errors.Is(err, domain.ErrSettingsNotFound):
+		errors.Is(err, domain.ErrSettingsNotFound),
+		errors.Is(err, domain.ErrCardNotFound):
 		return "NOT_FOUND"
+	case errors.Is(err, domain.ErrCardLookupAmbiguous):
+		return "CONFLICT"
 	default:
 		message := strings.ToLower(err.Error())
 		if strings.Contains(message, "unique constraint") || strings.Contains(message, "constraint failed") {
@@ -548,6 +582,18 @@ func messageFromReportingError(err error) string {
 		return "group-by must be one of: day|week|month"
 	case errors.Is(err, domain.ErrInvalidReportPeriod):
 		return "report period is invalid"
+	case errors.Is(err, domain.ErrInvalidPaymentMethod):
+		return "payment-method must be one of: cash|card"
+	case errors.Is(err, domain.ErrInvalidPaymentFilter):
+		return "payment-method must be one of: cash|card|credit|debit"
+	case errors.Is(err, domain.ErrCardSelectorConflict):
+		return "card-id, card-nickname and card-lookup are mutually exclusive"
+	case errors.Is(err, domain.ErrCardNotAllowed):
+		return "card selector cannot be used with payment-method cash"
+	case errors.Is(err, domain.ErrCardRequired):
+		return "card selector is required for payment-method card"
+	case errors.Is(err, domain.ErrCardLookupAmbiguous):
+		return "card lookup matches multiple cards"
 	case errors.Is(err, domain.ErrCategoryNotFound):
 		return "category not found"
 	case errors.Is(err, domain.ErrLabelNotFound):
@@ -558,6 +604,8 @@ func messageFromReportingError(err error) string {
 		return "cap not found"
 	case errors.Is(err, domain.ErrSettingsNotFound):
 		return "settings not found"
+	case errors.Is(err, domain.ErrCardNotFound):
+		return "card not found"
 	default:
 		message := strings.ToLower(err.Error())
 		if strings.Contains(message, "unique constraint") || strings.Contains(message, "constraint failed") {

@@ -105,6 +105,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(
 		NewCategoryCmd(opts),
 		NewLabelCmd(opts),
+		NewCardCmd(opts),
 		NewEntryCmd(opts),
 		NewCapCmd(opts),
 		NewReportCmd(opts),

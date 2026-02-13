@@ -37,6 +37,10 @@ Rules:
 
 - `entry-add.json`: `entry add --output json` success contract.
 - `entry-update.json`: `entry update --output json` success contract.
+- `card-add.json`: `card add --output json` success contract.
+- `card-due-show.json`: `card due show --output json` success contract.
+- `card-debt-show.json`: `card debt show --output json` success contract.
+- `card-payment-add.json`: `card payment add --output json` success contract.
 - `cap-set.json`: `cap set --output json` success contract with cap history change.
 - `cap-show.json`: `cap show --output json` success contract.
 - `cap-history.json`: `cap history --output json` success contract.

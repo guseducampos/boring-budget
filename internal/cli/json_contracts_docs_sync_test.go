@@ -21,6 +21,10 @@ func TestJSONContractsDocsStayInSync(t *testing.T) {
 	pairs := []fixturePair{
 		{name: "entry_add", golden: "entry_add.golden.json", docs: "entry-add.json"},
 		{name: "entry_update", golden: "entry_update.golden.json", docs: "entry-update.json"},
+		{name: "card_add", golden: "card_add.golden.json", docs: "card-add.json"},
+		{name: "card_due_show", golden: "card_due_show.golden.json", docs: "card-due-show.json"},
+		{name: "card_debt_show", golden: "card_debt_show.golden.json", docs: "card-debt-show.json"},
+		{name: "card_payment_add", golden: "card_payment_add.golden.json", docs: "card-payment-add.json"},
 		{name: "cap_set", golden: "cap_set.golden.json", docs: "cap-set.json"},
 		{name: "cap_show", golden: "cap_show.golden.json", docs: "cap-show.json"},
 		{name: "cap_history", golden: "cap_history.golden.json", docs: "cap-history.json"},

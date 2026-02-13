@@ -14,6 +14,12 @@ const (
 	LabelFilterModeAny  = "ANY"
 	LabelFilterModeAll  = "ALL"
 	LabelFilterModeNone = "NONE"
+
+	PaymentMethodCash = "cash"
+	PaymentMethodCard = "card"
+
+	PaymentMethodFilterCredit = "credit"
+	PaymentMethodFilterDebit  = "debit"
 )
 
 var (
@@ -26,53 +32,77 @@ var (
 	ErrInvalidDateRange       = errors.New("invalid date range")
 	ErrInvalidLabelMode       = errors.New("invalid label filter mode")
 	ErrEntryNotFound          = errors.New("entry not found")
+	ErrInvalidPaymentMethod   = errors.New("invalid payment method")
+	ErrInvalidPaymentFilter   = errors.New("invalid payment method filter")
+	ErrCardSelectorConflict   = errors.New("card selector conflict")
+	ErrCardRequired           = errors.New("card is required for payment method")
+	ErrCardNotAllowed         = errors.New("card selector cannot be used with cash payment method")
+	ErrPaymentNotAllowed      = errors.New("payment method is not allowed for income entries")
 )
 
 type Entry struct {
-	ID                 int64   `json:"id"`
-	Type               string  `json:"type"`
-	AmountMinor        int64   `json:"amount_minor"`
-	CurrencyCode       string  `json:"currency_code"`
-	TransactionDateUTC string  `json:"transaction_date_utc"`
-	CategoryID         *int64  `json:"category_id,omitempty"`
-	LabelIDs           []int64 `json:"label_ids,omitempty"`
-	Note               string  `json:"note,omitempty"`
-	CreatedAtUTC       string  `json:"created_at_utc"`
-	UpdatedAtUTC       string  `json:"updated_at_utc"`
+	ID                  int64   `json:"id"`
+	Type                string  `json:"type"`
+	AmountMinor         int64   `json:"amount_minor"`
+	CurrencyCode        string  `json:"currency_code"`
+	TransactionDateUTC  string  `json:"transaction_date_utc"`
+	CategoryID          *int64  `json:"category_id,omitempty"`
+	LabelIDs            []int64 `json:"label_ids,omitempty"`
+	Note                string  `json:"note,omitempty"`
+	PaymentMethod       string  `json:"payment_method,omitempty"`
+	PaymentCardID       *int64  `json:"payment_card_id,omitempty"`
+	PaymentCardNickname string  `json:"payment_card_nickname,omitempty"`
+	PaymentCardType     string  `json:"payment_card_type,omitempty"`
+	CreatedAtUTC        string  `json:"created_at_utc"`
+	UpdatedAtUTC        string  `json:"updated_at_utc"`
 }
 
 type EntryAddInput struct {
-	Type               string
-	AmountMinor        int64
-	CurrencyCode       string
-	TransactionDateUTC string
-	CategoryID         *int64
-	LabelIDs           []int64
-	Note               string
+	Type                string
+	AmountMinor         int64
+	CurrencyCode        string
+	TransactionDateUTC  string
+	CategoryID          *int64
+	LabelIDs            []int64
+	Note                string
+	PaymentMethod       string
+	PaymentCardID       *int64
+	PaymentCardNickname string
+	PaymentCardLookup   string
 }
 
 type EntryUpdateInput struct {
-	ID                 int64
-	Type               *string
-	AmountMinor        *int64
-	CurrencyCode       *string
-	TransactionDateUTC *string
-	SetCategory        bool
-	CategoryID         *int64
-	SetLabelIDs        bool
-	LabelIDs           []int64
-	SetNote            bool
-	Note               *string
+	ID                  int64
+	Type                *string
+	AmountMinor         *int64
+	CurrencyCode        *string
+	TransactionDateUTC  *string
+	SetCategory         bool
+	CategoryID          *int64
+	SetLabelIDs         bool
+	LabelIDs            []int64
+	SetNote             bool
+	Note                *string
+	SetPaymentMethod    bool
+	PaymentMethod       *string
+	SetPaymentCard      bool
+	PaymentCardID       *int64
+	PaymentCardNickname *string
+	PaymentCardLookup   *string
 }
 
 type EntryListFilter struct {
-	Type         string
-	CategoryID   *int64
-	DateFromUTC  string
-	DateToUTC    string
-	NoteContains string
-	LabelIDs     []int64
-	LabelMode    string
+	Type                string
+	CategoryID          *int64
+	DateFromUTC         string
+	DateToUTC           string
+	NoteContains        string
+	LabelIDs            []int64
+	LabelMode           string
+	PaymentMethod       string
+	PaymentCardID       *int64
+	PaymentCardNickname string
+	PaymentCardLookup   string
 }
 
 type EntryDeleteResult struct {
@@ -95,7 +125,9 @@ func HasEntryUpdateChanges(input EntryUpdateInput) bool {
 		input.TransactionDateUTC != nil ||
 		input.SetCategory ||
 		input.SetLabelIDs ||
-		input.SetNote
+		input.SetNote ||
+		input.SetPaymentMethod ||
+		input.SetPaymentCard
 }
 
 func NormalizeEntryType(entryType string) (string, error) {
@@ -215,4 +247,68 @@ func ValidateDateRange(fromUTC, toUTC string) error {
 		return ErrInvalidDateRange
 	}
 	return nil
+}
+
+func NormalizePaymentMethod(value string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" {
+		return "", nil
+	}
+
+	switch normalized {
+	case PaymentMethodCash, PaymentMethodCard:
+		return normalized, nil
+	default:
+		return "", ErrInvalidPaymentMethod
+	}
+}
+
+func NormalizePaymentMethodFilter(value string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" {
+		return "", nil
+	}
+
+	switch normalized {
+	case PaymentMethodCash, PaymentMethodCard, PaymentMethodFilterCredit, PaymentMethodFilterDebit:
+		return normalized, nil
+	default:
+		return "", ErrInvalidPaymentFilter
+	}
+}
+
+func ValidateOptionalCardID(cardID *int64) error {
+	if cardID == nil {
+		return nil
+	}
+	if *cardID <= 0 {
+		return ErrInvalidCardID
+	}
+	return nil
+}
+
+func ValidateCardSelector(cardID *int64, cardNickname, cardLookup string) error {
+	if err := ValidateOptionalCardID(cardID); err != nil {
+		return err
+	}
+
+	selectorCount := 0
+	if cardID != nil {
+		selectorCount++
+	}
+	if strings.TrimSpace(cardNickname) != "" {
+		selectorCount++
+	}
+	if strings.TrimSpace(cardLookup) != "" {
+		selectorCount++
+	}
+
+	if selectorCount > 1 {
+		return ErrCardSelectorConflict
+	}
+	return nil
+}
+
+func HasCardSelector(cardID *int64, cardNickname, cardLookup string) bool {
+	return cardID != nil || strings.TrimSpace(cardNickname) != "" || strings.TrimSpace(cardLookup) != ""
 }

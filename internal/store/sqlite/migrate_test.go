@@ -106,7 +106,7 @@ func TestRunMigrationsUsesEmbeddedWhenDefaultDirMissing(t *testing.T) {
 	}
 
 	assertTableExists(t, ctx, db, "transactions")
-	assertGooseVersion(t, ctx, db, 3)
+	assertGooseVersion(t, ctx, db, 4)
 }
 
 func assertGooseVersion(t *testing.T, ctx context.Context, db *sql.DB, expected int64) {

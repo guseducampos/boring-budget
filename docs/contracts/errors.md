@@ -14,7 +14,7 @@ Use these codes in `error.code` when `ok=false`.
 | `INVALID_ARGUMENT` | Required field missing or malformed value. | `2` |
 | `INVALID_DATE_RANGE` | Date window is invalid (`from > to`, bad preset, etc.). | `2` |
 | `INVALID_CURRENCY_CODE` | Currency code is not a supported ISO code. | `2` |
-| `NOT_FOUND` | Requested entity does not exist (entry/category/label/cap). | `3` |
+| `NOT_FOUND` | Requested entity does not exist (entry/category/label/cap/card). | `3` |
 | `CONFLICT` | Write conflict, duplicate unique value, or stale update. | `4` |
 | `DB_ERROR` | SQLite operation failed. | `5` |
 | `FX_RATE_UNAVAILABLE` | Required FX rate could not be resolved. | `6` |

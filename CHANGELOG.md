@@ -8,6 +8,31 @@ The format follows a lightweight Keep a Changelog style.
 
 ### Added
 
+- Card and payment-method tracking feature set:
+  - `migrations/0004_cards_payment_methods_liability.sql`
+  - `internal/domain/card.go`
+  - `internal/ports/card_ports.go`
+  - `internal/store/sqlite/card_repo.go`
+  - `internal/service/card_service.go`
+  - `internal/cli/card.go`
+  - `internal/store/sqlite/queries/card.sql`
+  - `internal/store/sqlite/sqlc/card.sql.go`
+- Payment-method-aware entry/report capabilities:
+  - expense payment capture (`cash` default, optional card binding)
+  - entry filters by payment method/card selectors (`card-id`, `card-nickname`, `card-lookup`)
+  - report `payment_methods` section with per-instrument totals, cash usage, credit/debit/cash subtotals, and credit liability buckets
+- Card contract coverage and docs:
+  - `docs/contracts/card-add.json`
+  - `docs/contracts/card-due-show.json`
+  - `docs/contracts/card-debt-show.json`
+  - `docs/contracts/card-payment-add.json`
+  - golden fixtures and docs-sync checks for card command contracts
+- New test coverage for card/payment flows:
+  - `internal/cli/card_test.go`
+  - payment filtering coverage in `internal/cli/entry_test.go`
+  - payment-method/liability report coverage in `internal/cli/report_test.go`
+  - payment rule coverage in `internal/service/entry_service_test.go`
+  - liability lifecycle/payment filter coverage in `internal/store/sqlite/entry_repo_test.go`
 - Agent-friendly docs navigation and metadata:
   - `docs/README.md` (docs router)
   - `docs/SPEC.md` (unified canonical spec)

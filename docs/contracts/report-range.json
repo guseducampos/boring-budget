@@ -52,6 +52,36 @@
         }
       ]
     },
+    "payment_methods": {
+      "by_instrument": [
+        {
+          "currency_code": "USD",
+          "instrument_key": "cash",
+          "instrument_label": "Cash",
+          "payment_method": "cash",
+          "total_minor": 1200
+        }
+      ],
+      "cash_usage": [
+        {
+          "cash_total_minor": 1200,
+          "currency_code": "USD",
+          "share_bps": 10000,
+          "spending_total_minor": 1200
+        }
+      ],
+      "credit_liability": [],
+      "totals": {
+        "cash": [
+          {
+            "currency_code": "USD",
+            "total_minor": 1200
+          }
+        ],
+        "credit": [],
+        "debit": []
+      }
+    },
     "period": {
       "from_utc": "2026-02-01T00:00:00Z",
       "scope": "range",

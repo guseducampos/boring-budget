@@ -88,15 +88,55 @@ type ReportCapStatus struct {
 	IsExceeded      bool   `json:"is_exceeded"`
 }
 
+type ReportPaymentInstrumentTotal struct {
+	PaymentMethod   string `json:"payment_method"`
+	CurrencyCode    string `json:"currency_code"`
+	TotalMinor      int64  `json:"total_minor"`
+	CardID          *int64 `json:"card_id,omitempty"`
+	CardNickname    string `json:"card_nickname,omitempty"`
+	CardType        string `json:"card_type,omitempty"`
+	InstrumentKey   string `json:"instrument_key"`
+	InstrumentLabel string `json:"instrument_label"`
+}
+
+type ReportPaymentMethodTotals struct {
+	Cash   []CurrencyTotal `json:"cash"`
+	Debit  []CurrencyTotal `json:"debit"`
+	Credit []CurrencyTotal `json:"credit"`
+}
+
+type ReportCashUsage struct {
+	CurrencyCode       string `json:"currency_code"`
+	CashTotalMinor     int64  `json:"cash_total_minor"`
+	SpendingTotalMinor int64  `json:"spending_total_minor"`
+	ShareBPS           int64  `json:"share_bps"`
+}
+
+type ReportCardLiability struct {
+	CardID             int64  `json:"card_id"`
+	CardNickname       string `json:"card_nickname"`
+	CurrencyCode       string `json:"currency_code"`
+	BalanceMinorSigned int64  `json:"balance_minor_signed"`
+	State              string `json:"state"`
+}
+
+type ReportPaymentMethods struct {
+	ByInstrument    []ReportPaymentInstrumentTotal `json:"by_instrument"`
+	Totals          ReportPaymentMethodTotals      `json:"totals"`
+	CashUsage       []ReportCashUsage              `json:"cash_usage"`
+	CreditLiability []ReportCardLiability          `json:"credit_liability"`
+}
+
 type Report struct {
-	Period     ReportPeriod       `json:"period"`
-	Grouping   string             `json:"grouping"`
-	Earnings   ReportSection      `json:"earnings"`
-	Spending   ReportSection      `json:"spending"`
-	Net        ReportNet          `json:"net"`
-	Converted  *ConvertedSummary  `json:"converted,omitempty"`
-	CapStatus  []ReportCapStatus  `json:"cap_status"`
-	CapChanges []MonthlyCapChange `json:"cap_changes"`
+	Period         ReportPeriod          `json:"period"`
+	Grouping       string                `json:"grouping"`
+	Earnings       ReportSection         `json:"earnings"`
+	Spending       ReportSection         `json:"spending"`
+	Net            ReportNet             `json:"net"`
+	PaymentMethods *ReportPaymentMethods `json:"payment_methods,omitempty"`
+	Converted      *ConvertedSummary     `json:"converted,omitempty"`
+	CapStatus      []ReportCapStatus     `json:"cap_status"`
+	CapChanges     []MonthlyCapChange    `json:"cap_changes"`
 }
 
 type CurrencyNet struct {

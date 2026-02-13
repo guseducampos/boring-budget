@@ -1,0 +1,37 @@
+{
+  "data": {
+    "payment": {
+      "balance": {
+        "balance_minor_signed": 1500,
+        "currency_code": "USD",
+        "state": "owes"
+      },
+      "card": {
+        "brand": "VISA",
+        "card_type": "credit",
+        "created_at_utc": "<timestamp_utc>",
+        "description": "Primary credit card",
+        "due_day": 15,
+        "id": 1,
+        "last4": "1234",
+        "nickname": "Main Credit",
+        "updated_at_utc": "<timestamp_utc>"
+      },
+      "event": {
+        "amount_minor_signed": -500,
+        "card_id": 1,
+        "created_at_utc": "<timestamp_utc>",
+        "currency_code": "USD",
+        "event_type": "payment",
+        "id": 2
+      }
+    }
+  },
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "<timestamp_utc>"
+  },
+  "ok": true,
+  "warnings": []
+}

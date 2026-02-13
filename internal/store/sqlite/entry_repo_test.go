@@ -496,6 +496,177 @@ func TestEntryRepoUpdateClearCategoryLabelsAndNote(t *testing.T) {
 	}
 }
 
+func TestEntryRepoListFiltersByPaymentMethodAndCardSelectors(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db := openEntryTestDB(t)
+	defer db.Close()
+
+	repo := NewEntryRepo(db)
+
+	debitCardID := insertCardForEntryTest(t, ctx, db, "Debit One", "Daily debit card", "1111", "VISA", "debit", nil)
+	creditDueDay := int64(20)
+	creditCardID := insertCardForEntryTest(t, ctx, db, "Credit One", "Travel card", "2222", "MASTERCARD", "credit", &creditDueDay)
+
+	if _, err := repo.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        1000,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-01T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("add cash expense: %v", err)
+	}
+
+	if _, err := repo.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        2000,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-02T00:00:00Z",
+		PaymentMethod:      domain.PaymentMethodCard,
+		PaymentCardID:      &debitCardID,
+	}); err != nil {
+		t.Fatalf("add debit-card expense: %v", err)
+	}
+
+	if _, err := repo.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        3000,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-03T00:00:00Z",
+		PaymentMethod:      domain.PaymentMethodCard,
+		PaymentCardID:      &creditCardID,
+	}); err != nil {
+		t.Fatalf("add credit-card expense: %v", err)
+	}
+
+	cashEntries, err := repo.List(ctx, domain.EntryListFilter{PaymentMethod: domain.PaymentMethodCash})
+	if err != nil {
+		t.Fatalf("list cash entries: %v", err)
+	}
+	if len(cashEntries) != 1 || cashEntries[0].PaymentMethod != domain.PaymentMethodCash {
+		t.Fatalf("unexpected cash entries: %+v", cashEntries)
+	}
+
+	cardEntries, err := repo.List(ctx, domain.EntryListFilter{PaymentMethod: domain.PaymentMethodCard})
+	if err != nil {
+		t.Fatalf("list card entries: %v", err)
+	}
+	if len(cardEntries) != 2 {
+		t.Fatalf("expected 2 card entries, got %d", len(cardEntries))
+	}
+
+	creditEntries, err := repo.List(ctx, domain.EntryListFilter{PaymentMethod: domain.PaymentMethodFilterCredit})
+	if err != nil {
+		t.Fatalf("list credit entries: %v", err)
+	}
+	if len(creditEntries) != 1 || creditEntries[0].PaymentCardID == nil || *creditEntries[0].PaymentCardID != creditCardID {
+		t.Fatalf("unexpected credit entries: %+v", creditEntries)
+	}
+
+	debitByID, err := repo.List(ctx, domain.EntryListFilter{PaymentCardID: &debitCardID})
+	if err != nil {
+		t.Fatalf("list by debit card id: %v", err)
+	}
+	if len(debitByID) != 1 || debitByID[0].PaymentCardID == nil || *debitByID[0].PaymentCardID != debitCardID {
+		t.Fatalf("unexpected debit-card-id entries: %+v", debitByID)
+	}
+
+	creditByNickname, err := repo.List(ctx, domain.EntryListFilter{PaymentCardNickname: "credit one"})
+	if err != nil {
+		t.Fatalf("list by card nickname: %v", err)
+	}
+	if len(creditByNickname) != 1 || creditByNickname[0].PaymentCardID == nil || *creditByNickname[0].PaymentCardID != creditCardID {
+		t.Fatalf("unexpected card-nickname entries: %+v", creditByNickname)
+	}
+
+	debitByLookup, err := repo.List(ctx, domain.EntryListFilter{PaymentCardLookup: "daily"})
+	if err != nil {
+		t.Fatalf("list by card lookup: %v", err)
+	}
+	if len(debitByLookup) != 1 || debitByLookup[0].PaymentCardID == nil || *debitByLookup[0].PaymentCardID != debitCardID {
+		t.Fatalf("unexpected card-lookup entries: %+v", debitByLookup)
+	}
+}
+
+func TestEntryRepoSyncCreditLiabilityChargeLifecycle(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db := openEntryTestDB(t)
+	defer db.Close()
+
+	repo := NewEntryRepo(db)
+
+	creditDueDay := int64(15)
+	creditCardID := insertCardForEntryTest(t, ctx, db, "Credit One", "Primary credit", "3333", "VISA", "credit", &creditDueDay)
+	debitCardID := insertCardForEntryTest(t, ctx, db, "Debit One", "Primary debit", "4444", "VISA", "debit", nil)
+
+	entry, err := repo.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        2500,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-10T00:00:00Z",
+		PaymentMethod:      domain.PaymentMethodCard,
+		PaymentCardID:      &creditCardID,
+	})
+	if err != nil {
+		t.Fatalf("add entry: %v", err)
+	}
+
+	if err := repo.SyncCreditLiabilityCharge(ctx, entry.ID); err != nil {
+		t.Fatalf("sync credit liability (initial): %v", err)
+	}
+	assertLiabilityChargeTotal(t, ctx, db, entry.ID, 1, 2500)
+
+	newAmount := int64(1800)
+	updated, err := repo.Update(ctx, domain.EntryUpdateInput{
+		ID:          entry.ID,
+		AmountMinor: &newAmount,
+	})
+	if err != nil {
+		t.Fatalf("update entry amount: %v", err)
+	}
+	if updated.AmountMinor != 1800 {
+		t.Fatalf("unexpected updated amount: %+v", updated)
+	}
+
+	if err := repo.SyncCreditLiabilityCharge(ctx, entry.ID); err != nil {
+		t.Fatalf("sync credit liability (after amount update): %v", err)
+	}
+	assertLiabilityChargeTotal(t, ctx, db, entry.ID, 1, 1800)
+
+	if _, err := repo.Update(ctx, domain.EntryUpdateInput{
+		ID:             entry.ID,
+		SetPaymentCard: true,
+		PaymentCardID:  &debitCardID,
+	}); err != nil {
+		t.Fatalf("update entry payment card to debit: %v", err)
+	}
+	if err := repo.SyncCreditLiabilityCharge(ctx, entry.ID); err != nil {
+		t.Fatalf("sync credit liability (after debit switch): %v", err)
+	}
+	assertLiabilityChargeTotal(t, ctx, db, entry.ID, 0, 0)
+
+	methodCash := domain.PaymentMethodCash
+	if _, err := repo.Update(ctx, domain.EntryUpdateInput{
+		ID:               entry.ID,
+		SetPaymentMethod: true,
+		PaymentMethod:    &methodCash,
+	}); err != nil {
+		t.Fatalf("update entry payment to cash: %v", err)
+	}
+	if err := repo.SyncCreditLiabilityCharge(ctx, entry.ID); err != nil {
+		t.Fatalf("sync credit liability (after cash switch): %v", err)
+	}
+	assertLiabilityChargeTotal(t, ctx, db, entry.ID, 0, 0)
+
+	if _, err := repo.Delete(ctx, entry.ID); err != nil {
+		t.Fatalf("delete entry: %v", err)
+	}
+	assertLiabilityChargeTotal(t, ctx, db, entry.ID, 0, 0)
+}
+
 func openEntryTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 
@@ -549,6 +720,30 @@ func insertLabelForEntryTest(t *testing.T, ctx context.Context, db *sql.DB, name
 		t.Fatalf("read inserted label id: %v", err)
 	}
 
+	return id
+}
+
+func insertCardForEntryTest(t *testing.T, ctx context.Context, db *sql.DB, nickname, description, last4, brand, cardType string, dueDay *int64) int64 {
+	t.Helper()
+
+	result, err := db.ExecContext(
+		ctx,
+		`INSERT INTO cards (nickname, description, last4, brand, card_type, due_day) VALUES (?, ?, ?, ?, ?, ?);`,
+		nickname,
+		description,
+		last4,
+		brand,
+		cardType,
+		nullableInt64(dueDay),
+	)
+	if err != nil {
+		t.Fatalf("insert card: %v", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("read inserted card id: %v", err)
+	}
 	return id
 }
 
@@ -609,5 +804,25 @@ func assertLabelStillActive(t *testing.T, ctx context.Context, db *sql.DB, label
 	}
 	if deletedAt.Valid {
 		t.Fatalf("expected label to remain active")
+	}
+}
+
+func assertLiabilityChargeTotal(t *testing.T, ctx context.Context, db *sql.DB, entryID int64, expectedCount int64, expectedTotal int64) {
+	t.Helper()
+
+	var count int64
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM credit_liability_events WHERE reference_transaction_id = ?;`, entryID).Scan(&count); err != nil {
+		t.Fatalf("count liability events by reference transaction: %v", err)
+	}
+	if count != expectedCount {
+		t.Fatalf("expected %d liability events, got %d", expectedCount, count)
+	}
+
+	var total int64
+	if err := db.QueryRowContext(ctx, `SELECT CAST(COALESCE(SUM(amount_minor_signed), 0) AS INTEGER) FROM credit_liability_events WHERE reference_transaction_id = ?;`, entryID).Scan(&total); err != nil {
+		t.Fatalf("sum liability events by reference transaction: %v", err)
+	}
+	if total != expectedTotal {
+		t.Fatalf("expected liability sum %d, got %d", expectedTotal, total)
 	}
 }

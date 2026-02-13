@@ -9,9 +9,10 @@ import (
 )
 
 type AggregateResult struct {
-	Earnings domain.ReportSection
-	Spending domain.ReportSection
-	Net      domain.ReportNet
+	Earnings       domain.ReportSection
+	Spending       domain.ReportSection
+	Net            domain.ReportNet
+	PaymentMethods domain.ReportPaymentMethods
 }
 
 type groupCurrencyKey struct {
@@ -25,6 +26,15 @@ type categoryCurrencyKey struct {
 	CurrencyCode string
 }
 
+type paymentInstrumentKey struct {
+	PaymentMethod string
+	CurrencyCode  string
+	HasCard       bool
+	CardID        int64
+	CardNickname  string
+	CardType      string
+}
+
 type CategoryLabelResolver func(categoryID int64) string
 
 func BuildAggregate(entries []domain.Entry, grouping string, categoryLabelResolver CategoryLabelResolver) (AggregateResult, error) {
@@ -34,6 +44,10 @@ func BuildAggregate(entries []domain.Entry, grouping string, categoryLabelResolv
 	spendGroups := map[groupCurrencyKey]int64{}
 	earnCategories := map[categoryCurrencyKey]int64{}
 	spendCategories := map[categoryCurrencyKey]int64{}
+	paymentInstruments := map[paymentInstrumentKey]int64{}
+	cashByCurrency := map[string]int64{}
+	creditByCurrency := map[string]int64{}
+	debitByCurrency := map[string]int64{}
 
 	for _, entry := range entries {
 		periodKey, err := domain.PeriodKeyForTransaction(entry.TransactionDateUTC, grouping)
@@ -50,6 +64,31 @@ func BuildAggregate(entries []domain.Entry, grouping string, categoryLabelResolv
 			spendByCurrency[entry.CurrencyCode] += entry.AmountMinor
 			spendGroups[groupCurrencyKey{PeriodKey: periodKey, CurrencyCode: entry.CurrencyCode}] += entry.AmountMinor
 			spendCategories[toCategoryCurrencyKey(entry)] += entry.AmountMinor
+			paymentMethod := normalizeEntryPaymentMethod(entry)
+			cardType := normalizeEntryCardType(entry)
+
+			instrument := paymentInstrumentKey{
+				PaymentMethod: paymentMethod,
+				CurrencyCode:  entry.CurrencyCode,
+				CardNickname:  strings.TrimSpace(entry.PaymentCardNickname),
+				CardType:      cardType,
+			}
+			if entry.PaymentCardID != nil {
+				instrument.HasCard = true
+				instrument.CardID = *entry.PaymentCardID
+			}
+			paymentInstruments[instrument] += entry.AmountMinor
+
+			switch paymentMethod {
+			case domain.PaymentMethodCash:
+				cashByCurrency[entry.CurrencyCode] += entry.AmountMinor
+			case domain.PaymentMethodCard:
+				if cardType == domain.PaymentMethodFilterCredit {
+					creditByCurrency[entry.CurrencyCode] += entry.AmountMinor
+				} else {
+					debitByCurrency[entry.CurrencyCode] += entry.AmountMinor
+				}
+			}
 		}
 	}
 
@@ -66,6 +105,16 @@ func BuildAggregate(entries []domain.Entry, grouping string, categoryLabelResolv
 		},
 		Net: domain.ReportNet{
 			ByCurrency: mapNetTotals(earnByCurrency, spendByCurrency),
+		},
+		PaymentMethods: domain.ReportPaymentMethods{
+			ByInstrument: mapPaymentInstrumentTotals(paymentInstruments),
+			Totals: domain.ReportPaymentMethodTotals{
+				Cash:   mapCurrencyTotals(cashByCurrency),
+				Debit:  mapCurrencyTotals(debitByCurrency),
+				Credit: mapCurrencyTotals(creditByCurrency),
+			},
+			CashUsage:       mapCashUsage(cashByCurrency, spendByCurrency),
+			CreditLiability: []domain.ReportCardLiability{},
 		},
 	}, nil
 }
@@ -178,4 +227,100 @@ func mapNetTotals(earningsByCurrency, spendingByCurrency map[string]int64) []dom
 		netByCurrency[currency] -= total
 	}
 	return mapCurrencyTotals(netByCurrency)
+}
+
+func mapPaymentInstrumentTotals(values map[paymentInstrumentKey]int64) []domain.ReportPaymentInstrumentTotal {
+	keys := make([]paymentInstrumentKey, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].CurrencyCode != keys[j].CurrencyCode {
+			return keys[i].CurrencyCode < keys[j].CurrencyCode
+		}
+		if keys[i].PaymentMethod != keys[j].PaymentMethod {
+			return keys[i].PaymentMethod < keys[j].PaymentMethod
+		}
+		if keys[i].HasCard != keys[j].HasCard {
+			return !keys[i].HasCard
+		}
+		if keys[i].CardID != keys[j].CardID {
+			return keys[i].CardID < keys[j].CardID
+		}
+		return keys[i].CardType < keys[j].CardType
+	})
+
+	output := make([]domain.ReportPaymentInstrumentTotal, 0, len(keys))
+	for _, key := range keys {
+		item := domain.ReportPaymentInstrumentTotal{
+			PaymentMethod: key.PaymentMethod,
+			CurrencyCode:  key.CurrencyCode,
+			TotalMinor:    values[key],
+		}
+		if key.PaymentMethod == domain.PaymentMethodCash {
+			item.InstrumentKey = domain.PaymentMethodCash
+			item.InstrumentLabel = "Cash"
+		} else {
+			item.InstrumentKey = "card:unknown"
+			item.InstrumentLabel = "Card"
+		}
+		if key.HasCard {
+			cardID := key.CardID
+			item.CardID = &cardID
+			item.CardNickname = key.CardNickname
+			item.CardType = key.CardType
+			item.InstrumentKey = fmt.Sprintf("card:%d", key.CardID)
+			if strings.TrimSpace(key.CardNickname) != "" {
+				item.InstrumentLabel = key.CardNickname
+			} else {
+				item.InstrumentLabel = fmt.Sprintf("Card %d", key.CardID)
+			}
+		}
+		output = append(output, item)
+	}
+
+	return output
+}
+
+func mapCashUsage(cashByCurrency, spendByCurrency map[string]int64) []domain.ReportCashUsage {
+	currencies := make([]string, 0, len(spendByCurrency))
+	for currency := range spendByCurrency {
+		currencies = append(currencies, currency)
+	}
+	sort.Strings(currencies)
+
+	output := make([]domain.ReportCashUsage, 0, len(currencies))
+	for _, currency := range currencies {
+		spend := spendByCurrency[currency]
+		cash := cashByCurrency[currency]
+		share := int64(0)
+		if spend > 0 {
+			share = (cash * 10000) / spend
+		}
+		output = append(output, domain.ReportCashUsage{
+			CurrencyCode:       currency,
+			CashTotalMinor:     cash,
+			SpendingTotalMinor: spend,
+			ShareBPS:           share,
+		})
+	}
+
+	return output
+}
+
+func normalizeEntryPaymentMethod(entry domain.Entry) string {
+	method := strings.ToLower(strings.TrimSpace(entry.PaymentMethod))
+	if method == domain.PaymentMethodCard {
+		return domain.PaymentMethodCard
+	}
+	return domain.PaymentMethodCash
+}
+
+func normalizeEntryCardType(entry domain.Entry) string {
+	cardType := strings.ToLower(strings.TrimSpace(entry.PaymentCardType))
+	if cardType == domain.PaymentMethodFilterCredit {
+		return domain.PaymentMethodFilterCredit
+	}
+	return domain.PaymentMethodFilterDebit
 }

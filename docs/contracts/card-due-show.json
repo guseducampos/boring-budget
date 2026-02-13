@@ -1,0 +1,19 @@
+{
+  "data": {
+    "due": {
+      "card_id": 1,
+      "due_day": 15,
+      "next_due_date_utc": "2026-02-15T00:00:00Z",
+      "nickname": "Main Credit",
+      "reference_utc": "2026-02-10",
+      "timezone": "UTC"
+    }
+  },
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "<timestamp_utc>"
+  },
+  "ok": true,
+  "warnings": []
+}

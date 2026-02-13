@@ -20,36 +20,48 @@ const (
 )
 
 type entryAddFlags struct {
-	entryType     string
-	amount        string
-	currency      string
-	dateRaw       string
-	categoryIDRaw string
-	labelIDRaw    []string
-	note          string
+	entryType      string
+	amount         string
+	currency       string
+	dateRaw        string
+	categoryIDRaw  string
+	labelIDRaw     []string
+	note           string
+	paymentMethod  string
+	cardIDRaw      string
+	cardNickname   string
+	cardLookupText string
 }
 
 type entryListFlags struct {
-	entryType     string
-	categoryIDRaw string
-	fromRaw       string
-	toRaw         string
-	noteContains  string
-	labelIDRaw    []string
-	labelMode     string
+	entryType      string
+	categoryIDRaw  string
+	fromRaw        string
+	toRaw          string
+	noteContains   string
+	labelIDRaw     []string
+	labelMode      string
+	paymentMethod  string
+	cardIDRaw      string
+	cardNickname   string
+	cardLookupText string
 }
 
 type entryUpdateFlags struct {
-	entryType     string
-	amount        string
-	currency      string
-	dateRaw       string
-	categoryIDRaw string
-	clearCategory bool
-	labelIDRaw    []string
-	clearLabels   bool
-	note          string
-	clearNote     bool
+	entryType      string
+	amount         string
+	currency       string
+	dateRaw        string
+	categoryIDRaw  string
+	clearCategory  bool
+	labelIDRaw     []string
+	clearLabels    bool
+	note           string
+	clearNote      bool
+	paymentMethod  string
+	cardIDRaw      string
+	cardNickname   string
+	cardLookupText string
 }
 
 type entryCLIError struct {
@@ -134,6 +146,10 @@ func newEntryUpdateCmd(opts *RootOptions) *cobra.Command {
 	cmd.Flags().BoolVar(&flags.clearLabels, "clear-labels", false, "Clear all labels")
 	cmd.Flags().StringVar(&flags.note, "note", "", "Optional note value to set")
 	cmd.Flags().BoolVar(&flags.clearNote, "clear-note", false, "Clear note")
+	cmd.Flags().StringVar(&flags.paymentMethod, "payment-method", "", "Optional payment method: cash|card")
+	cmd.Flags().StringVar(&flags.cardIDRaw, "card-id", "", "Optional card ID selector")
+	cmd.Flags().StringVar(&flags.cardNickname, "card-nickname", "", "Optional card nickname selector")
+	cmd.Flags().StringVar(&flags.cardLookupText, "card-lookup", "", "Optional card lookup selector")
 
 	return cmd
 }
@@ -183,6 +199,10 @@ func newEntryAddCmd(opts *RootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&flags.categoryIDRaw, "category-id", "", "Optional category ID")
 	cmd.Flags().StringArrayVar(&flags.labelIDRaw, "label-id", nil, "Optional label ID (repeatable)")
 	cmd.Flags().StringVar(&flags.note, "note", "", "Optional note")
+	cmd.Flags().StringVar(&flags.paymentMethod, "payment-method", "", "Payment method: cash|card (expense only)")
+	cmd.Flags().StringVar(&flags.cardIDRaw, "card-id", "", "Card ID selector")
+	cmd.Flags().StringVar(&flags.cardNickname, "card-nickname", "", "Card nickname selector")
+	cmd.Flags().StringVar(&flags.cardLookupText, "card-lookup", "", "Card lookup selector")
 
 	return cmd
 }
@@ -232,6 +252,10 @@ func newEntryListCmd(opts *RootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&flags.noteContains, "note-contains", "", "Filter entries whose note contains this text (case-insensitive)")
 	cmd.Flags().StringArrayVar(&flags.labelIDRaw, "label-id", nil, "Filter by label ID (repeatable)")
 	cmd.Flags().StringVar(&flags.labelMode, "label-mode", "any", "Label filter mode: any|all|none")
+	cmd.Flags().StringVar(&flags.paymentMethod, "payment-method", "", "Payment filter: cash|card|credit|debit")
+	cmd.Flags().StringVar(&flags.cardIDRaw, "card-id", "", "Filter by card ID")
+	cmd.Flags().StringVar(&flags.cardNickname, "card-nickname", "", "Filter by exact card nickname")
+	cmd.Flags().StringVar(&flags.cardLookupText, "card-lookup", "", "Filter by card lookup text")
 
 	return cmd
 }
@@ -281,8 +305,17 @@ func newEntryService(opts *RootOptions) (*service.EntryService, error) {
 
 	entryRepo := sqlitestore.NewEntryRepo(opts.db)
 	capRepo := sqlitestore.NewCapRepo(opts.db)
+	cardRepo := sqlitestore.NewCardRepo(opts.db)
+	cardSvc, err := service.NewCardService(cardRepo)
+	if err != nil {
+		return nil, fmt.Errorf("card service init: %w", err)
+	}
 
-	svc, err := service.NewEntryService(entryRepo, service.WithEntryCapLookup(capRepo))
+	svc, err := service.NewEntryService(
+		entryRepo,
+		service.WithEntryCapLookup(capRepo),
+		service.WithEntryCardResolver(cardSvc),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("entry service init: %w", err)
 	}
@@ -352,14 +385,27 @@ func buildEntryAddInput(cmd *cobra.Command, flags *entryAddFlags) (domain.EntryA
 		return domain.EntryAddInput{}, err
 	}
 
+	var paymentCardID *int64
+	if strings.TrimSpace(flags.cardIDRaw) != "" {
+		id, err := parsePositiveInt64(flags.cardIDRaw, "card-id")
+		if err != nil {
+			return domain.EntryAddInput{}, err
+		}
+		paymentCardID = &id
+	}
+
 	return domain.EntryAddInput{
-		Type:               flags.entryType,
-		AmountMinor:        amountMinor,
-		CurrencyCode:       flags.currency,
-		TransactionDateUTC: flags.dateRaw,
-		CategoryID:         categoryID,
-		LabelIDs:           labelIDs,
-		Note:               flags.note,
+		Type:                flags.entryType,
+		AmountMinor:         amountMinor,
+		CurrencyCode:        flags.currency,
+		TransactionDateUTC:  flags.dateRaw,
+		CategoryID:          categoryID,
+		LabelIDs:            labelIDs,
+		Note:                flags.note,
+		PaymentMethod:       strings.TrimSpace(flags.paymentMethod),
+		PaymentCardID:       paymentCardID,
+		PaymentCardNickname: strings.TrimSpace(flags.cardNickname),
+		PaymentCardLookup:   strings.TrimSpace(flags.cardLookupText),
 	}, nil
 }
 
@@ -391,6 +437,20 @@ func buildEntryUpdateInput(cmd *cobra.Command, id int64, flags *entryUpdateFlags
 			Code:    "INVALID_ARGUMENT",
 			Message: "clear-note cannot be used with note",
 			Details: map[string]any{"fields": []string{"clear-note", "note"}},
+		}
+	}
+	if cmd != nil && cmd.Flags().Changed("card-id") && (cmd.Flags().Changed("card-nickname") || cmd.Flags().Changed("card-lookup")) {
+		return domain.EntryUpdateInput{}, &entryCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "card-id cannot be combined with card-nickname or card-lookup",
+			Details: map[string]any{"fields": []string{"card-id", "card-nickname", "card-lookup"}},
+		}
+	}
+	if cmd != nil && cmd.Flags().Changed("card-nickname") && cmd.Flags().Changed("card-lookup") {
+		return domain.EntryUpdateInput{}, &entryCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "card-nickname cannot be combined with card-lookup",
+			Details: map[string]any{"fields": []string{"card-nickname", "card-lookup"}},
 		}
 	}
 	if cmd != nil && cmd.Flags().Changed("amount") && !cmd.Flags().Changed("currency") {
@@ -466,6 +526,31 @@ func buildEntryUpdateInput(cmd *cobra.Command, id int64, flags *entryUpdateFlags
 		input.SetNote = true
 		input.Note = &value
 	}
+	if cmd != nil && cmd.Flags().Changed("payment-method") {
+		changed = true
+		value := strings.TrimSpace(flags.paymentMethod)
+		input.SetPaymentMethod = true
+		input.PaymentMethod = &value
+	}
+	if cmd != nil && (cmd.Flags().Changed("card-id") || cmd.Flags().Changed("card-nickname") || cmd.Flags().Changed("card-lookup")) {
+		changed = true
+		input.SetPaymentCard = true
+		if cmd.Flags().Changed("card-id") {
+			id, err := parsePositiveInt64(flags.cardIDRaw, "card-id")
+			if err != nil {
+				return domain.EntryUpdateInput{}, err
+			}
+			input.PaymentCardID = &id
+		}
+		if cmd.Flags().Changed("card-nickname") {
+			value := strings.TrimSpace(flags.cardNickname)
+			input.PaymentCardNickname = &value
+		}
+		if cmd.Flags().Changed("card-lookup") {
+			value := strings.TrimSpace(flags.cardLookupText)
+			input.PaymentCardLookup = &value
+		}
+	}
 
 	if !changed {
 		return domain.EntryUpdateInput{}, &entryCLIError{
@@ -480,6 +565,8 @@ func buildEntryUpdateInput(cmd *cobra.Command, id int64, flags *entryUpdateFlags
 					"category-id|clear-category",
 					"label-id|clear-labels",
 					"note|clear-note",
+					"payment-method",
+					"card-id|card-nickname|card-lookup",
 				},
 			},
 		}
@@ -524,14 +611,27 @@ func buildEntryListFilter(flags *entryListFlags) (domain.EntryListFilter, error)
 		}
 	}
 
+	var paymentCardID *int64
+	if strings.TrimSpace(flags.cardIDRaw) != "" {
+		id, err := parsePositiveInt64(flags.cardIDRaw, "card-id")
+		if err != nil {
+			return domain.EntryListFilter{}, err
+		}
+		paymentCardID = &id
+	}
+
 	return domain.EntryListFilter{
-		Type:         flags.entryType,
-		CategoryID:   categoryID,
-		DateFromUTC:  fromUTC,
-		DateToUTC:    toUTC,
-		NoteContains: strings.TrimSpace(flags.noteContains),
-		LabelIDs:     labelIDs,
-		LabelMode:    flags.labelMode,
+		Type:                flags.entryType,
+		CategoryID:          categoryID,
+		DateFromUTC:         fromUTC,
+		DateToUTC:           toUTC,
+		NoteContains:        strings.TrimSpace(flags.noteContains),
+		LabelIDs:            labelIDs,
+		LabelMode:           flags.labelMode,
+		PaymentMethod:       strings.TrimSpace(flags.paymentMethod),
+		PaymentCardID:       paymentCardID,
+		PaymentCardNickname: strings.TrimSpace(flags.cardNickname),
+		PaymentCardLookup:   strings.TrimSpace(flags.cardLookupText),
 	}, nil
 }
 
@@ -647,12 +747,22 @@ func codeFromEntryError(err error) string {
 		errors.Is(err, domain.ErrNoEntryUpdateFields),
 		errors.Is(err, domain.ErrInvalidCategoryID),
 		errors.Is(err, domain.ErrInvalidLabelID),
-		errors.Is(err, domain.ErrInvalidLabelMode):
+		errors.Is(err, domain.ErrInvalidLabelMode),
+		errors.Is(err, domain.ErrInvalidCardID),
+		errors.Is(err, domain.ErrInvalidPaymentMethod),
+		errors.Is(err, domain.ErrInvalidPaymentFilter),
+		errors.Is(err, domain.ErrCardSelectorConflict),
+		errors.Is(err, domain.ErrCardRequired),
+		errors.Is(err, domain.ErrCardNotAllowed),
+		errors.Is(err, domain.ErrPaymentNotAllowed):
 		return "INVALID_ARGUMENT"
 	case errors.Is(err, domain.ErrCategoryNotFound),
 		errors.Is(err, domain.ErrLabelNotFound),
-		errors.Is(err, domain.ErrEntryNotFound):
+		errors.Is(err, domain.ErrEntryNotFound),
+		errors.Is(err, domain.ErrCardNotFound):
 		return "NOT_FOUND"
+	case errors.Is(err, domain.ErrCardLookupAmbiguous):
+		return "CONFLICT"
 	default:
 		msg := strings.ToLower(err.Error())
 		if strings.Contains(msg, "unique constraint") || strings.Contains(msg, "constraint failed") {
@@ -690,12 +800,30 @@ func messageFromEntryError(err error) string {
 		return "label-id must be a positive integer"
 	case errors.Is(err, domain.ErrInvalidLabelMode):
 		return "label-mode must be one of: any|all|none"
+	case errors.Is(err, domain.ErrInvalidCardID):
+		return "card-id must be a positive integer"
+	case errors.Is(err, domain.ErrInvalidPaymentMethod):
+		return "payment-method must be one of: cash|card"
+	case errors.Is(err, domain.ErrInvalidPaymentFilter):
+		return "payment-method filter must be one of: cash|card|credit|debit"
+	case errors.Is(err, domain.ErrCardSelectorConflict):
+		return "card-id, card-nickname and card-lookup are mutually exclusive"
+	case errors.Is(err, domain.ErrCardRequired):
+		return "card selector is required when payment-method is card"
+	case errors.Is(err, domain.ErrCardNotAllowed):
+		return "card selector cannot be used when payment-method is cash"
+	case errors.Is(err, domain.ErrPaymentNotAllowed):
+		return "payment method options are only valid for expense entries"
 	case errors.Is(err, domain.ErrCategoryNotFound):
 		return "category not found"
 	case errors.Is(err, domain.ErrLabelNotFound):
 		return "label not found"
 	case errors.Is(err, domain.ErrEntryNotFound):
 		return "entry not found"
+	case errors.Is(err, domain.ErrCardNotFound):
+		return "card not found"
+	case errors.Is(err, domain.ErrCardLookupAmbiguous):
+		return "card lookup matches multiple cards"
 	default:
 		msg := strings.ToLower(err.Error())
 		if strings.Contains(msg, "unique constraint") || strings.Contains(msg, "constraint failed") {

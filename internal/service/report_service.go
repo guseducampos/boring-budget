@@ -35,15 +35,20 @@ type ReportService struct {
 	fxConverter    ReportFXConverter
 	settingsReader ReportSettingsReader
 	categoryReader ReportCategoryReader
+	cardDebtReader ReportCardDebtReader
 }
 
 type ReportRequest struct {
-	Period     domain.ReportPeriodInput
-	Grouping   string
-	CategoryID *int64
-	LabelIDs   []int64
-	LabelMode  string
-	ConvertTo  string
+	Period              domain.ReportPeriodInput
+	Grouping            string
+	CategoryID          *int64
+	LabelIDs            []int64
+	LabelMode           string
+	ConvertTo           string
+	PaymentMethod       string
+	PaymentCardID       *int64
+	PaymentCardNickname string
+	PaymentCardLookup   string
 }
 
 type ReportResult struct {
@@ -57,6 +62,10 @@ type ReportFXConverter interface {
 
 type ReportSettingsReader interface {
 	Get(ctx context.Context) (domain.Settings, error)
+}
+
+type ReportCardDebtReader interface {
+	ShowDebtAll(ctx context.Context) ([]CardDebtCardSummary, error)
 }
 
 type ReportServiceOption func(*ReportService)
@@ -76,6 +85,12 @@ func WithReportSettingsReader(reader ReportSettingsReader) ReportServiceOption {
 func WithReportCategoryReader(reader ReportCategoryReader) ReportServiceOption {
 	return func(s *ReportService) {
 		s.categoryReader = reader
+	}
+}
+
+func WithReportCardDebtReader(reader ReportCardDebtReader) ReportServiceOption {
+	return func(s *ReportService) {
+		s.cardDebtReader = reader
 	}
 }
 
@@ -122,13 +137,27 @@ func (s *ReportService) Generate(ctx context.Context, req ReportRequest) (Report
 	if err != nil {
 		return ReportResult{}, err
 	}
+	normalizedPaymentMethod, err := domain.NormalizePaymentMethodFilter(req.PaymentMethod)
+	if err != nil {
+		return ReportResult{}, err
+	}
+	if err := domain.ValidateCardSelector(req.PaymentCardID, req.PaymentCardNickname, req.PaymentCardLookup); err != nil {
+		return ReportResult{}, err
+	}
+	if normalizedPaymentMethod == domain.PaymentMethodCash && domain.HasCardSelector(req.PaymentCardID, req.PaymentCardNickname, req.PaymentCardLookup) {
+		return ReportResult{}, domain.ErrCardNotAllowed
+	}
 
 	entries, err := s.entryReader.List(ctx, domain.EntryListFilter{
-		CategoryID:  req.CategoryID,
-		DateFromUTC: period.FromUTC,
-		DateToUTC:   period.ToUTC,
-		LabelIDs:    normalizedLabelIDs,
-		LabelMode:   normalizedLabelMode,
+		CategoryID:          req.CategoryID,
+		DateFromUTC:         period.FromUTC,
+		DateToUTC:           period.ToUTC,
+		LabelIDs:            normalizedLabelIDs,
+		LabelMode:           normalizedLabelMode,
+		PaymentMethod:       normalizedPaymentMethod,
+		PaymentCardID:       req.PaymentCardID,
+		PaymentCardNickname: strings.TrimSpace(req.PaymentCardNickname),
+		PaymentCardLookup:   strings.TrimSpace(req.PaymentCardLookup),
 	})
 	if err != nil {
 		return ReportResult{}, err
@@ -147,14 +176,24 @@ func (s *ReportService) Generate(ctx context.Context, req ReportRequest) (Report
 	}
 
 	report := domain.Report{
-		Period:     period,
-		Grouping:   grouping,
-		Earnings:   aggregate.Earnings,
-		Spending:   aggregate.Spending,
-		Net:        aggregate.Net,
-		CapStatus:  []domain.ReportCapStatus{},
-		CapChanges: []domain.MonthlyCapChange{},
+		Period:         period,
+		Grouping:       grouping,
+		Earnings:       aggregate.Earnings,
+		Spending:       aggregate.Spending,
+		Net:            aggregate.Net,
+		PaymentMethods: nil,
+		CapStatus:      []domain.ReportCapStatus{},
+		CapChanges:     []domain.MonthlyCapChange{},
 	}
+	paymentMethods := aggregate.PaymentMethods
+	if s.cardDebtReader != nil {
+		cardDebts, err := s.cardDebtReader.ShowDebtAll(ctx)
+		if err != nil {
+			return ReportResult{}, err
+		}
+		paymentMethods.CreditLiability = toReportCardLiability(cardDebts)
+	}
+	report.PaymentMethods = &paymentMethods
 
 	conversionWarnings := []domain.Warning{}
 	targetCurrency := strings.TrimSpace(req.ConvertTo)
@@ -216,6 +255,34 @@ func (s *ReportService) Generate(ctx context.Context, req ReportRequest) (Report
 	warnings = append(warnings, conversionWarnings...)
 
 	return ReportResult{Report: report, Warnings: warnings}, nil
+}
+
+func toReportCardLiability(rows []CardDebtCardSummary) []domain.ReportCardLiability {
+	if len(rows) == 0 {
+		return []domain.ReportCardLiability{}
+	}
+
+	out := make([]domain.ReportCardLiability, 0, len(rows))
+	for _, row := range rows {
+		for _, bucket := range row.Buckets {
+			out = append(out, domain.ReportCardLiability{
+				CardID:             row.Card.ID,
+				CardNickname:       row.Card.Nickname,
+				CurrencyCode:       bucket.CurrencyCode,
+				BalanceMinorSigned: bucket.BalanceMinorSigned,
+				State:              bucket.State,
+			})
+		}
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CardID != out[j].CardID {
+			return out[i].CardID < out[j].CardID
+		}
+		return out[i].CurrencyCode < out[j].CurrencyCode
+	})
+
+	return out
 }
 
 func (s *ReportService) buildCategoryLabelResolver(ctx context.Context, entries []domain.Entry) (reporting.CategoryLabelResolver, error) {

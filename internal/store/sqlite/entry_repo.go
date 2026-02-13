@@ -101,6 +101,18 @@ func (r *EntryRepo) Add(ctx context.Context, input domain.EntryAddInput) (domain
 		}
 	}
 
+	if strings.TrimSpace(input.Type) == domain.EntryTypeExpense {
+		paymentMethod := strings.ToLower(strings.TrimSpace(input.PaymentMethod))
+		if paymentMethod == "" {
+			paymentMethod = domain.PaymentMethodCash
+		}
+		if err := r.upsertEntryPaymentMethod(ctx, qtx, entryID, paymentMethod, input.PaymentCardID); err != nil {
+			return domain.Entry{}, err
+		}
+	} else if strings.TrimSpace(input.PaymentMethod) != "" || input.PaymentCardID != nil {
+		return domain.Entry{}, domain.ErrPaymentNotAllowed
+	}
+
 	if ownsTx {
 		if err := tx.Commit(); err != nil {
 			return domain.Entry{}, fmt.Errorf("add entry commit: %w", err)
@@ -254,6 +266,50 @@ func (r *EntryRepo) Update(ctx context.Context, input domain.EntryUpdateInput) (
 		}
 	}
 
+	if strings.TrimSpace(entryType) != domain.EntryTypeExpense && setType == 1 {
+		if err := r.upsertEntryPaymentMethod(ctx, qtx, input.ID, domain.PaymentMethodCash, nil); err != nil {
+			return domain.Entry{}, err
+		}
+	}
+
+	if input.SetPaymentMethod || input.SetPaymentCard {
+		if strings.TrimSpace(entryType) != domain.EntryTypeExpense {
+			return domain.Entry{}, domain.ErrPaymentNotAllowed
+		}
+
+		currentPaymentMethod, currentCardID, err := r.loadPaymentMethodState(ctx, qtx, input.ID)
+		if err != nil {
+			return domain.Entry{}, err
+		}
+
+		paymentMethod := currentPaymentMethod
+		cardID := currentCardID
+		if input.SetPaymentMethod {
+			if input.PaymentMethod == nil {
+				return domain.Entry{}, domain.ErrInvalidPaymentMethod
+			}
+			paymentMethod = strings.ToLower(strings.TrimSpace(*input.PaymentMethod))
+			if paymentMethod == "" {
+				return domain.Entry{}, domain.ErrInvalidPaymentMethod
+			}
+		}
+
+		if input.SetPaymentCard {
+			cardID = input.PaymentCardID
+			if !input.SetPaymentMethod {
+				paymentMethod = domain.PaymentMethodCard
+			}
+		}
+
+		if paymentMethod == domain.PaymentMethodCash {
+			cardID = nil
+		}
+
+		if err := r.upsertEntryPaymentMethod(ctx, qtx, input.ID, paymentMethod, cardID); err != nil {
+			return domain.Entry{}, err
+		}
+	}
+
 	if ownsTx {
 		if err := tx.Commit(); err != nil {
 			return domain.Entry{}, fmt.Errorf("update entry commit: %w", err)
@@ -298,11 +354,19 @@ func (r *EntryRepo) List(ctx context.Context, filter domain.EntryListFilter) ([]
 
 	entries := make([]domain.Entry, 0, len(rows))
 	for _, row := range rows {
+		paymentInfo, err := r.loadPaymentInfo(ctx, r.queries, row.ID)
+		if err != nil {
+			return nil, err
+		}
+		if !matchesEntryPaymentFilter(row.Type, paymentInfo, filter) {
+			continue
+		}
+
 		labelIDs := labelIDsByTransactionID[row.ID]
 		if labelIDs == nil {
 			labelIDs = make([]int64, 0)
 		}
-		entries = append(entries, mapSQLCTransactionToDomainEntry(row, labelIDs))
+		entries = append(entries, mapSQLCTransactionToDomainEntry(row, labelIDs, paymentInfo))
 	}
 
 	return entries, nil
@@ -349,6 +413,10 @@ func (r *EntryRepo) Delete(ctx context.Context, id int64) (domain.EntryDeleteRes
 	detachedLabels, err := linksResult.RowsAffected()
 	if err != nil {
 		return domain.EntryDeleteResult{}, fmt.Errorf("delete entry label links rows affected: %w", err)
+	}
+
+	if _, err := qtx.DeleteCreditLiabilityEventsByReferenceTransaction(ctx, sql.NullInt64{Int64: id, Valid: true}); err != nil {
+		return domain.EntryDeleteResult{}, fmt.Errorf("delete entry liability events: %w", err)
 	}
 
 	if ownsTx {
@@ -400,10 +468,15 @@ func (r *EntryRepo) getActiveByID(ctx context.Context, id int64) (domain.Entry, 
 		labelIDs = append(labelIDs, labelRow.LabelID)
 	}
 
-	return mapSQLCTransactionToDomainEntry(row, labelIDs), nil
+	paymentInfo, err := r.loadPaymentInfo(ctx, r.queries, id)
+	if err != nil {
+		return domain.Entry{}, err
+	}
+
+	return mapSQLCTransactionToDomainEntry(row, labelIDs, paymentInfo), nil
 }
 
-func mapSQLCTransactionToDomainEntry(row queries.Transaction, labelIDs []int64) domain.Entry {
+func mapSQLCTransactionToDomainEntry(row queries.Transaction, labelIDs []int64, paymentInfo entryPaymentInfo) domain.Entry {
 	var categoryID *int64
 	if row.CategoryID.Valid {
 		categoryID = &row.CategoryID.Int64
@@ -414,7 +487,7 @@ func mapSQLCTransactionToDomainEntry(row queries.Transaction, labelIDs []int64) 
 		note = row.Note.String
 	}
 
-	return domain.Entry{
+	entry := domain.Entry{
 		ID:                 row.ID,
 		Type:               row.Type,
 		AmountMinor:        row.AmountMinor,
@@ -426,6 +499,227 @@ func mapSQLCTransactionToDomainEntry(row queries.Transaction, labelIDs []int64) 
 		CreatedAtUTC:       row.CreatedAtUtc,
 		UpdatedAtUTC:       row.UpdatedAtUtc,
 	}
+	if strings.TrimSpace(row.Type) == domain.EntryTypeExpense {
+		entry.PaymentMethod = paymentInfo.Method
+		entry.PaymentCardID = paymentInfo.CardID
+		entry.PaymentCardNickname = paymentInfo.CardNickname
+		entry.PaymentCardType = paymentInfo.CardType
+	}
+	return entry
+}
+
+func (r *EntryRepo) SyncCreditLiabilityCharge(ctx context.Context, entryID int64) error {
+	tx, qtx, ownsTx, err := r.writeQueries(ctx, "sync credit liability")
+	if err != nil {
+		return err
+	}
+	if ownsTx {
+		defer func() {
+			_ = tx.Rollback()
+		}()
+	}
+
+	entry, err := qtx.GetActiveEntryByID(ctx, entryID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return domain.ErrEntryNotFound
+		}
+		return fmt.Errorf("sync credit liability load entry: %w", err)
+	}
+
+	if _, err := qtx.DeleteCreditLiabilityEventsByReferenceTransaction(ctx, sql.NullInt64{Int64: entryID, Valid: true}); err != nil {
+		return fmt.Errorf("sync credit liability clear previous events: %w", err)
+	}
+
+	if strings.TrimSpace(entry.Type) == domain.EntryTypeExpense {
+		paymentInfo, err := r.loadPaymentInfo(ctx, qtx, entryID)
+		if err != nil {
+			return err
+		}
+		if paymentInfo.Method == domain.PaymentMethodCard && paymentInfo.CardID != nil && paymentInfo.CardType == domain.PaymentMethodFilterCredit {
+			nowUTC := time.Now().UTC().Format(time.RFC3339Nano)
+			_, err = qtx.CreateCreditLiabilityEvent(ctx, queries.CreateCreditLiabilityEventParams{
+				CardID:                 *paymentInfo.CardID,
+				CurrencyCode:           entry.CurrencyCode,
+				EventType:              domain.CardLiabilityEventCharge,
+				AmountMinorSigned:      entry.AmountMinor,
+				ReferenceTransactionID: sql.NullInt64{Int64: entryID, Valid: true},
+				Note:                   sql.NullString{},
+				CreatedAtUtc:           nowUTC,
+			})
+			if err != nil {
+				return fmt.Errorf("sync credit liability create charge event: %w", err)
+			}
+		}
+	}
+
+	if ownsTx {
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("sync credit liability commit: %w", err)
+		}
+	}
+	return nil
+}
+
+type entryPaymentInfo struct {
+	Method          string
+	CardID          *int64
+	CardNickname    string
+	CardType        string
+	CardDescription string
+	CardLast4       string
+}
+
+func (r *EntryRepo) loadPaymentInfo(ctx context.Context, q *queries.Queries, entryID int64) (entryPaymentInfo, error) {
+	row, err := q.GetTransactionPaymentMethodByTransactionID(ctx, entryID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return entryPaymentInfo{Method: domain.PaymentMethodCash}, nil
+		}
+		return entryPaymentInfo{}, fmt.Errorf("load entry payment method: %w", err)
+	}
+
+	info := entryPaymentInfo{
+		Method: strings.ToLower(strings.TrimSpace(row.MethodType)),
+	}
+	if info.Method == "" {
+		info.Method = domain.PaymentMethodCash
+	}
+
+	if !row.CardID.Valid {
+		return info, nil
+	}
+
+	cardID := row.CardID.Int64
+	info.CardID = &cardID
+	card, err := q.GetActiveCardByID(ctx, cardID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return info, nil
+		}
+		return entryPaymentInfo{}, fmt.Errorf("load payment card: %w", err)
+	}
+
+	info.CardNickname = card.Nickname
+	info.CardType = strings.ToLower(strings.TrimSpace(card.CardType))
+	info.CardLast4 = card.Last4
+	if card.Description.Valid {
+		info.CardDescription = card.Description.String
+	}
+	return info, nil
+}
+
+func (r *EntryRepo) loadPaymentMethodState(ctx context.Context, q *queries.Queries, entryID int64) (string, *int64, error) {
+	row, err := q.GetTransactionPaymentMethodByTransactionID(ctx, entryID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return domain.PaymentMethodCash, nil, nil
+		}
+		return "", nil, fmt.Errorf("load current payment method: %w", err)
+	}
+
+	method := strings.ToLower(strings.TrimSpace(row.MethodType))
+	if method == "" {
+		method = domain.PaymentMethodCash
+	}
+	var cardID *int64
+	if row.CardID.Valid {
+		value := row.CardID.Int64
+		cardID = &value
+	}
+	return method, cardID, nil
+}
+
+func (r *EntryRepo) upsertEntryPaymentMethod(ctx context.Context, q *queries.Queries, entryID int64, method string, cardID *int64) error {
+	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
+	switch normalizedMethod {
+	case domain.PaymentMethodCash:
+		if cardID != nil {
+			return domain.ErrCardNotAllowed
+		}
+	case domain.PaymentMethodCard:
+		if cardID == nil {
+			return domain.ErrCardRequired
+		}
+		if *cardID <= 0 {
+			return domain.ErrInvalidCardID
+		}
+		exists, err := q.ExistsActiveCardByID(ctx, *cardID)
+		if err != nil {
+			return fmt.Errorf("validate payment card: %w", err)
+		}
+		if !isTruthy(exists) {
+			return domain.ErrCardNotFound
+		}
+	default:
+		return domain.ErrInvalidPaymentMethod
+	}
+
+	_, err := q.UpsertTransactionPaymentMethod(ctx, queries.UpsertTransactionPaymentMethodParams{
+		TransactionID: entryID,
+		MethodType:    normalizedMethod,
+		CardID:        nullableInt64(cardID),
+		UpdatedAtUtc:  time.Now().UTC().Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		return fmt.Errorf("upsert entry payment method: %w", err)
+	}
+	return nil
+}
+
+func matchesEntryPaymentFilter(entryType string, info entryPaymentInfo, filter domain.EntryListFilter) bool {
+	methodFilter := strings.ToLower(strings.TrimSpace(filter.PaymentMethod))
+	hasCardSelector := filter.PaymentCardID != nil ||
+		strings.TrimSpace(filter.PaymentCardNickname) != "" ||
+		strings.TrimSpace(filter.PaymentCardLookup) != ""
+	if strings.TrimSpace(entryType) != domain.EntryTypeExpense && (methodFilter != "" || hasCardSelector) {
+		return false
+	}
+
+	switch methodFilter {
+	case "":
+	case domain.PaymentMethodCash:
+		if info.Method != domain.PaymentMethodCash {
+			return false
+		}
+	case domain.PaymentMethodCard:
+		if info.Method != domain.PaymentMethodCard {
+			return false
+		}
+	case domain.PaymentMethodFilterCredit:
+		if info.Method != domain.PaymentMethodCard || info.CardType != domain.PaymentMethodFilterCredit {
+			return false
+		}
+	case domain.PaymentMethodFilterDebit:
+		if info.Method != domain.PaymentMethodCard || info.CardType != domain.PaymentMethodFilterDebit {
+			return false
+		}
+	default:
+		return false
+	}
+
+	if filter.PaymentCardID != nil {
+		if info.CardID == nil || *info.CardID != *filter.PaymentCardID {
+			return false
+		}
+	}
+
+	nicknameFilter := strings.TrimSpace(filter.PaymentCardNickname)
+	if nicknameFilter != "" && !strings.EqualFold(strings.TrimSpace(info.CardNickname), nicknameFilter) {
+		return false
+	}
+
+	lookupFilter := strings.TrimSpace(filter.PaymentCardLookup)
+	if lookupFilter != "" {
+		lookupLower := strings.ToLower(lookupFilter)
+		if !strings.Contains(strings.ToLower(info.CardNickname), lookupLower) &&
+			!strings.Contains(strings.ToLower(info.CardDescription), lookupLower) &&
+			!strings.Contains(strings.ToLower(info.CardLast4), lookupLower) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func nullableString(value string) sql.NullString {

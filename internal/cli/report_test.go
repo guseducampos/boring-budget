@@ -181,6 +181,84 @@ func TestReportCommandJSONScopesAndFilters(t *testing.T) {
 	}
 }
 
+func TestReportCommandJSONIncludesPaymentMethodSummaryAndLiability(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	creditCardID := insertTestCard(t, db, "Credit One", "travel", "1234", "VISA", "credit", 15)
+	debitCardID := insertTestCard(t, db, "Debit One", "daily", "5678", "VISA", "debit", 0)
+
+	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "expense",
+		"--amount", "10.00",
+		"--currency", "USD",
+		"--date", "2026-02-01",
+	}))
+	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "expense",
+		"--amount", "20.00",
+		"--currency", "USD",
+		"--date", "2026-02-02",
+		"--payment-method", "card",
+		"--card-id", strconv.FormatInt(creditCardID, 10),
+	}))
+	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "expense",
+		"--amount", "5.00",
+		"--currency", "USD",
+		"--date", "2026-02-03",
+		"--payment-method", "card",
+		"--card-id", strconv.FormatInt(debitCardID, 10),
+	}))
+
+	monthly := executeReportCmdJSON(t, db, []string{"monthly", "--month", "2026-02"})
+	if ok, _ := monthly["ok"].(bool); !ok {
+		t.Fatalf("expected monthly report ok=true payload=%v", monthly)
+	}
+
+	data := mustMap(t, monthly["data"])
+	paymentMethods := mustMap(t, data["payment_methods"])
+
+	byInstrument := mustAnySlice(t, paymentMethods["by_instrument"])
+	if len(byInstrument) != 3 {
+		t.Fatalf("expected 3 payment instruments, got %d (%v)", len(byInstrument), byInstrument)
+	}
+
+	totals := mustMap(t, paymentMethods["totals"])
+	cashTotals := mustAnySlice(t, totals["cash"])
+	creditTotals := mustAnySlice(t, totals["credit"])
+	debitTotals := mustAnySlice(t, totals["debit"])
+	if reportTotalForCurrency(t, cashTotals, "USD") != 1000 {
+		t.Fatalf("expected cash total USD=1000, got %d", reportTotalForCurrency(t, cashTotals, "USD"))
+	}
+	if reportTotalForCurrency(t, creditTotals, "USD") != 2000 {
+		t.Fatalf("expected credit total USD=2000, got %d", reportTotalForCurrency(t, creditTotals, "USD"))
+	}
+	if reportTotalForCurrency(t, debitTotals, "USD") != 500 {
+		t.Fatalf("expected debit total USD=500, got %d", reportTotalForCurrency(t, debitTotals, "USD"))
+	}
+
+	liability := mustAnySlice(t, paymentMethods["credit_liability"])
+	if len(liability) != 1 {
+		t.Fatalf("expected one credit liability bucket, got %d (%v)", len(liability), liability)
+	}
+	liabilityItem := mustMap(t, liability[0])
+	if int64(liabilityItem["card_id"].(float64)) != creditCardID {
+		t.Fatalf("expected liability card_id=%d, got %v", creditCardID, liabilityItem["card_id"])
+	}
+	if int64(liabilityItem["balance_minor_signed"].(float64)) != 2000 {
+		t.Fatalf("expected liability balance_minor_signed=2000, got %v", liabilityItem["balance_minor_signed"])
+	}
+	if liabilityItem["state"].(string) != "owes" {
+		t.Fatalf("expected liability state owes, got %v", liabilityItem["state"])
+	}
+}
+
 func TestReportCommandJSONRangeRequiresFromAndTo(t *testing.T) {
 	t.Parallel()
 

@@ -11,8 +11,9 @@ import (
 )
 
 type EntryService struct {
-	repo      EntryRepository
-	capLookup EntryCapLookup
+	repo         EntryRepository
+	capLookup    EntryCapLookup
+	cardResolver EntryCardResolver
 }
 
 type EntryRepository = ports.EntryRepository
@@ -20,11 +21,25 @@ type EntryCapLookup = ports.EntryCapLookup
 type EntryRepositoryTxBinder = ports.EntryRepositoryTxBinder
 type EntryCapLookupTxBinder = ports.EntryCapLookupTxBinder
 
+type EntryCreditLiabilitySyncer interface {
+	SyncCreditLiabilityCharge(ctx context.Context, entryID int64) error
+}
+
+type EntryCardResolver interface {
+	Resolve(ctx context.Context, selector domain.CardSelector) (domain.Card, error)
+}
+
 type EntryServiceOption func(*EntryService)
 
 func WithEntryCapLookup(capLookup EntryCapLookup) EntryServiceOption {
 	return func(service *EntryService) {
 		service.capLookup = capLookup
+	}
+}
+
+func WithEntryCardResolver(cardResolver EntryCardResolver) EntryServiceOption {
+	return func(service *EntryService) {
+		service.cardResolver = cardResolver
 	}
 }
 
@@ -79,6 +94,35 @@ func (s *EntryService) AddWithWarnings(ctx context.Context, input domain.EntryAd
 	if err != nil {
 		return EntryAddResult{}, err
 	}
+	normalizedPaymentMethod, err := domain.NormalizePaymentMethod(input.PaymentMethod)
+	if err != nil {
+		return EntryAddResult{}, err
+	}
+	if err := domain.ValidateCardSelector(input.PaymentCardID, input.PaymentCardNickname, input.PaymentCardLookup); err != nil {
+		return EntryAddResult{}, err
+	}
+	hasCardSelector := domain.HasCardSelector(input.PaymentCardID, input.PaymentCardNickname, input.PaymentCardLookup)
+
+	if normalizedType != domain.EntryTypeExpense {
+		if normalizedPaymentMethod != "" || hasCardSelector {
+			return EntryAddResult{}, domain.ErrPaymentNotAllowed
+		}
+	} else {
+		if normalizedPaymentMethod == "" {
+			normalizedPaymentMethod = domain.PaymentMethodCash
+		}
+		if normalizedPaymentMethod == domain.PaymentMethodCash && hasCardSelector {
+			return EntryAddResult{}, domain.ErrCardNotAllowed
+		}
+		if normalizedPaymentMethod == domain.PaymentMethodCard && !hasCardSelector {
+			return EntryAddResult{}, domain.ErrCardRequired
+		}
+	}
+
+	resolvedCardID, err := s.resolvePaymentCardID(ctx, input.PaymentCardID, input.PaymentCardNickname, input.PaymentCardLookup)
+	if err != nil {
+		return EntryAddResult{}, err
+	}
 
 	entry, err := s.repo.Add(ctx, domain.EntryAddInput{
 		Type:               normalizedType,
@@ -88,8 +132,13 @@ func (s *EntryService) AddWithWarnings(ctx context.Context, input domain.EntryAd
 		CategoryID:         input.CategoryID,
 		LabelIDs:           normalizedLabelIDs,
 		Note:               strings.TrimSpace(input.Note),
+		PaymentMethod:      normalizedPaymentMethod,
+		PaymentCardID:      resolvedCardID,
 	})
 	if err != nil {
+		return EntryAddResult{}, err
+	}
+	if err := s.syncCreditLiability(ctx, entry); err != nil {
 		return EntryAddResult{}, err
 	}
 
@@ -193,6 +242,20 @@ func (s *EntryService) List(ctx context.Context, filter domain.EntryListFilter) 
 		return nil, err
 	}
 	normalizedFilter.LabelMode = normalizedLabelMode
+	normalizedPaymentMethod, err := domain.NormalizePaymentMethodFilter(filter.PaymentMethod)
+	if err != nil {
+		return nil, err
+	}
+	if err := domain.ValidateCardSelector(filter.PaymentCardID, filter.PaymentCardNickname, filter.PaymentCardLookup); err != nil {
+		return nil, err
+	}
+	if normalizedPaymentMethod == domain.PaymentMethodCash && domain.HasCardSelector(filter.PaymentCardID, filter.PaymentCardNickname, filter.PaymentCardLookup) {
+		return nil, domain.ErrCardNotAllowed
+	}
+	normalizedFilter.PaymentMethod = normalizedPaymentMethod
+	normalizedFilter.PaymentCardID = filter.PaymentCardID
+	normalizedFilter.PaymentCardNickname = strings.TrimSpace(filter.PaymentCardNickname)
+	normalizedFilter.PaymentCardLookup = strings.TrimSpace(filter.PaymentCardLookup)
 
 	entries, err := s.repo.List(ctx, normalizedFilter)
 	if err != nil {
@@ -284,8 +347,48 @@ func (s *EntryService) UpdateWithWarnings(ctx context.Context, input domain.Entr
 		}
 	}
 
+	if input.SetPaymentMethod {
+		normalized.SetPaymentMethod = true
+		if input.PaymentMethod != nil {
+			paymentMethod, err := domain.NormalizePaymentMethod(*input.PaymentMethod)
+			if err != nil {
+				return EntryAddResult{}, err
+			}
+			if paymentMethod == "" {
+				return EntryAddResult{}, domain.ErrInvalidPaymentMethod
+			}
+			normalized.PaymentMethod = &paymentMethod
+		}
+	}
+
+	if input.SetPaymentCard {
+		normalized.SetPaymentCard = true
+		if err := domain.ValidateCardSelector(input.PaymentCardID, derefString(input.PaymentCardNickname), derefString(input.PaymentCardLookup)); err != nil {
+			return EntryAddResult{}, err
+		}
+		resolvedCardID, err := s.resolvePaymentCardID(ctx, input.PaymentCardID, derefString(input.PaymentCardNickname), derefString(input.PaymentCardLookup))
+		if err != nil {
+			return EntryAddResult{}, err
+		}
+		normalized.PaymentCardID = resolvedCardID
+	}
+
+	if normalized.SetPaymentCard && normalized.PaymentCardID != nil && !normalized.SetPaymentMethod {
+		method := domain.PaymentMethodCard
+		normalized.SetPaymentMethod = true
+		normalized.PaymentMethod = &method
+	}
+
+	if normalized.SetPaymentMethod && normalized.PaymentMethod != nil && *normalized.PaymentMethod == domain.PaymentMethodCash {
+		normalized.SetPaymentCard = true
+		normalized.PaymentCardID = nil
+	}
+
 	entry, err := s.repo.Update(ctx, normalized)
 	if err != nil {
+		return EntryAddResult{}, err
+	}
+	if err := s.syncCreditLiability(ctx, entry); err != nil {
 		return EntryAddResult{}, err
 	}
 
@@ -400,4 +503,52 @@ func filterEntriesByLabelMode(entries []domain.Entry, labelIDs []int64, mode str
 	}
 
 	return filtered
+}
+
+func (s *EntryService) syncCreditLiability(ctx context.Context, entry domain.Entry) error {
+	if strings.TrimSpace(entry.Type) != domain.EntryTypeExpense {
+		return nil
+	}
+
+	syncer, ok := s.repo.(EntryCreditLiabilitySyncer)
+	if !ok || syncer == nil {
+		return nil
+	}
+
+	return syncer.SyncCreditLiabilityCharge(ctx, entry.ID)
+}
+
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func (s *EntryService) resolvePaymentCardID(ctx context.Context, cardID *int64, cardNickname, cardLookup string) (*int64, error) {
+	if cardID != nil {
+		value := *cardID
+		return &value, nil
+	}
+
+	trimmedNickname := strings.TrimSpace(cardNickname)
+	trimmedLookup := strings.TrimSpace(cardLookup)
+	if trimmedNickname == "" && trimmedLookup == "" {
+		return nil, nil
+	}
+
+	if s.cardResolver == nil {
+		return nil, domain.ErrCardNotFound
+	}
+
+	card, err := s.cardResolver.Resolve(ctx, domain.CardSelector{
+		Nickname: trimmedNickname,
+		Lookup:   trimmedLookup,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	value := card.ID
+	return &value, nil
 }
