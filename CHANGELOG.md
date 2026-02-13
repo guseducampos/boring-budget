@@ -188,6 +188,13 @@ The format follows a lightweight Keep a Changelog style.
 
 ### Changed
 
+- `docs/SPEC.md` upgraded to v2 with a full payment-instrument specification:
+  - expense method tracking (`cash` default, optional card)
+  - card model (`nickname` unique, `description`, `last4`, `brand`, `card_type`, `due_day`)
+  - credit liability ledger per card and currency, including overpayment (`in_favor`) semantics
+  - card payment events as debt operations (not income/spending)
+  - card-focused report/query requirements and required command surfaces
+  - explicit time-range support for card/payment-method reporting (`from/to` and period presets)
 - `AGENTS.md` was rewritten as an execution-focused policy guide with:
   - explicit guidance that specs and rules live under `docs/`, while `AGENTS.md` remains operational-only
   - a harness-oriented implementation loop and definition of done
