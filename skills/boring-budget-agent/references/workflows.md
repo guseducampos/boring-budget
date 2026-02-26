@@ -30,8 +30,12 @@ Use this reference when executing common `boring-budget` tasks repeatedly.
    - `--type`, `--currency`, `--date`
    - amount input: use `--amount`; CLI conversion/validation is deterministic
    - legacy minor-unit input flags are removed (`--amount-minor`, `--opening-balance-minor`, `--month-cap-minor`)
+   - optional account attribution:
+     - `entry add --bank-account-id <id>`
+     - `entry update --bank-account-id <id>` or `--clear-bank-account`
+     - if omitted and `general_balance` is linked, new entries default to that account
 3. Query back with filters:
-   - `entry list --from ... --to ... --label-mode any|all|none --output json`
+   - `entry list --from ... --to ... --label-mode any|all|none [--bank-account-id <id>] --output json`
 4. Validate:
    - ledger entities keep amounts in minor units
    - report contracts expose monetary fields as `*_major` strings
@@ -51,6 +55,10 @@ Use this reference when executing common `boring-budget` tasks repeatedly.
 
 1. Report by period:
    - `report range|monthly|bimonthly|quarterly ... --output json`
+   - balances in payload:
+     - `period_balance` always
+     - `general_balance` lifetime context
+     - `monthly_balance` on monthly scope
 2. Keep grouping explicit:
    - `--group-by day|week|month`
 3. Keep filter semantics explicit:
@@ -96,12 +104,14 @@ Use this reference when executing common `boring-budget` tasks repeatedly.
    - `savings transfer add --amount ... --currency ... --date ... [--source-account-id ...] [--destination-account-id ...] --output json`
    - `savings entry add --amount ... --currency ... --date ... [--account-id ...] --output json`
    - `savings show --scope lifetime|range|both ... --output json`
+   - if account ids are omitted, transfer/entry defaults are derived from linked `general_balance` and `savings` targets when present
 2. Bank-account metadata and links:
    - `bank-account add --alias ... --last4 .... --output json`
    - `bank-account list --output json`
    - `bank-account link set --target general_balance|savings --account-id <id> --output json`
    - `bank-account link clear --target general_balance|savings --output json`
    - `bank-account balance show --scope lifetime|range|both ... --output json`
+   - same bank account can be linked to both `general_balance` and `savings`
 3. Scheduled fixed expenses:
    - `schedule add --name ... --amount ... --currency ... --day 1..28 --start-month YYYY-MM --output json`
    - `schedule list --output json`

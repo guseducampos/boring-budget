@@ -37,6 +37,10 @@ Use this skill to run `boring-budget` commands with deterministic behavior for A
 2. Treat `ok`, `warnings[]`, `error`, and `meta` as the canonical response envelope.
 3. Persist and validate ledger money in minor units (`amount_minor`) with ISO currency codes.
 4. Report contracts (`report *`, report export) expose monetary fields as major-unit strings (`*_major`).
+   - Report balance fields include:
+     - `period_balance` (selected scope net)
+     - `general_balance` (lifetime context)
+     - `monthly_balance` (monthly reports)
 5. For command inputs, use decimal amount flags (`--amount`, `--opening-balance`, `--month-cap`) and rely on CLI-side deterministic conversion/validation to canonical `amount_minor`.
 6. Legacy minor-unit input flags are removed from command input (`--amount-minor`, `--opening-balance-minor`, `--month-cap-minor`); do not use them.
 7. When updating entry amounts, send `--currency` together with `--amount` so conversion is explicit and deterministic.
@@ -71,7 +75,10 @@ boring-budget entry add --type income --amount 3500.00 --currency USD --date 202
 boring-budget entry add --type expense --amount 12.50 --currency USD --date 2026-02-11 --category-id 1 --label-id 1 --note "Lunch" --output json
 boring-budget entry add --type expense --amount 74.25 --currency USD --date 2026-02-11 --note "Coffee" --output json
 boring-budget entry add --type expense --amount 45.00 --currency USD --date 2026-02-11 --bank-account-id 1 --note "Fuel" --output json
+boring-budget entry update 10 --bank-account-id 2 --output json
+boring-budget entry update 10 --clear-bank-account --output json
 boring-budget entry add --type expense --amount 95.00 --currency USD --date 2026-02-11 --payment-method card --card-id 1 --note "Groceries" --output json
+boring-budget entry list --bank-account-id 1 --from 2026-02-01 --to 2026-02-28 --output json
 boring-budget entry list --payment-method credit --from 2026-02-01 --to 2026-02-28 --output json
 
 # Cap management (non-blocking overspend policy)
@@ -92,6 +99,7 @@ boring-budget card payment add --card-id 1 --amount 200.00 --currency USD --note
 boring-budget report monthly --month 2026-02 --group-by month --output json
 boring-budget report range --from 2026-02-01 --to 2026-02-28 --payment-method card --card-id 1 --output json
 boring-budget balance show --scope both --from 2026-02-01 --to 2026-02-28 --output json
+# report payload balance context: period_balance + general_balance (+ monthly_balance on monthly scope)
 
 # Savings
 boring-budget savings transfer add --amount 200.00 --currency USD --date 2026-02-12 --note "Emergency fund" --output json
@@ -103,6 +111,8 @@ boring-budget savings show --scope both --from 2026-02-01 --to 2026-02-28 --outp
 # Bank accounts
 boring-budget bank-account add --alias "Main Checking" --last4 1234 --output json
 boring-budget bank-account link set --target general_balance --account-id 1 --output json
+boring-budget bank-account link set --target savings --account-id 1 --output json
+# same account can be linked to both spending and savings targets
 boring-budget bank-account link list --output json
 boring-budget bank-account balance show --scope both --from 2026-02-01 --to 2026-02-28 --output json
 
