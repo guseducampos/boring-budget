@@ -8,6 +8,27 @@ The format follows a lightweight Keep a Changelog style.
 
 ### Added
 
+- Savings and scheduled spending feature set:
+  - `migrations/0005_savings_bank_accounts_schedules.sql`
+  - `internal/domain/savings.go`
+  - `internal/service/savings_service.go`
+  - `internal/store/sqlite/savings_repo.go`
+  - `internal/cli/savings.go`
+  - `internal/domain/schedule.go`
+  - `internal/service/schedule_service.go`
+  - `internal/store/sqlite/schedule_repo.go`
+  - `internal/cli/schedule.go`
+- Bank-account registry and linkage support:
+  - `internal/domain/bank_account.go`
+  - `internal/service/bank_account_service.go`
+  - `internal/store/sqlite/bank_account_repo.go`
+  - `internal/cli/bank_account.go`
+  - optional links for `general_balance` and `savings` targets
+- New docs contracts:
+  - `docs/contracts/bank-account-add.json`
+  - `docs/contracts/savings-show.json`
+  - `docs/contracts/schedule-add.json`
+
 - Card and payment-method tracking feature set:
   - `migrations/0004_cards_payment_methods_liability.sql`
   - `internal/domain/card.go`
@@ -213,6 +234,16 @@ The format follows a lightweight Keep a Changelog style.
 
 ### Changed
 
+- Report JSON contracts now expose amount fields in major-unit string format (`*_major`) and include:
+  - `period_balance`
+  - `general_balance`
+  - `monthly_balance` (monthly scope)
+  - `linked_accounts`
+- Report golden fixtures and docs contracts were updated to the new report payload shape.
+- Root command surface now includes:
+  - `bank-account`
+  - `savings`
+  - `schedule`
 - `docs/SPEC.md` upgraded to v2 with a full payment-instrument specification:
   - expense method tracking (`cash` default, optional card)
   - card model (`nickname` unique, `description`, `last4`, `brand`, `card_type`, `due_day`)

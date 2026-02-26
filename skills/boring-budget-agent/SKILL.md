@@ -35,15 +35,16 @@ Use this skill to run `boring-budget` commands with deterministic behavior for A
 
 1. Prefer `--output json` for all automation flows.
 2. Treat `ok`, `warnings[]`, `error`, and `meta` as the canonical response envelope.
-3. Persist and validate money in minor units only (`amount_minor`) with ISO currency codes.
-4. For command inputs, use decimal amount flags (`--amount`, `--opening-balance`, `--month-cap`) and rely on CLI-side deterministic conversion/validation to canonical `amount_minor`.
-5. Legacy minor-unit input flags are removed from command input (`--amount-minor`, `--opening-balance-minor`, `--month-cap-minor`); do not use them.
-6. When updating entry amounts, send `--currency` together with `--amount` so conversion is explicit and deterministic.
-7. Use UTC-safe dates/timestamps for deterministic runs.
-8. Never assume deletes are destructive:
+3. Persist and validate ledger money in minor units (`amount_minor`) with ISO currency codes.
+4. Report contracts (`report *`, report export) expose monetary fields as major-unit strings (`*_major`).
+5. For command inputs, use decimal amount flags (`--amount`, `--opening-balance`, `--month-cap`) and rely on CLI-side deterministic conversion/validation to canonical `amount_minor`.
+6. Legacy minor-unit input flags are removed from command input (`--amount-minor`, `--opening-balance-minor`, `--month-cap-minor`); do not use them.
+7. When updating entry amounts, send `--currency` together with `--amount` so conversion is explicit and deterministic.
+8. Use UTC-safe dates/timestamps for deterministic runs.
+9. Never assume deletes are destructive:
    - deleting a category orphans linked entries
    - deleting a label removes links only
-9. Treat overspend warnings as non-blocking writes (`CAP_EXCEEDED` warns, does not fail).
+10. Treat overspend warnings as non-blocking writes (`CAP_EXCEEDED` warns, does not fail).
 
 ## Standard execution flow
 
@@ -90,6 +91,20 @@ boring-budget card payment add --card-id 1 --amount 200.00 --currency USD --note
 boring-budget report monthly --month 2026-02 --group-by month --output json
 boring-budget report range --from 2026-02-01 --to 2026-02-28 --payment-method card --card-id 1 --output json
 boring-budget balance show --scope both --from 2026-02-01 --to 2026-02-28 --output json
+
+# Savings
+boring-budget savings transfer add --amount 200.00 --currency USD --date 2026-02-12 --note "Emergency fund" --output json
+boring-budget savings entry add --amount 50.00 --currency USD --date 2026-02-13 --note "Gift saved" --output json
+boring-budget savings show --scope both --from 2026-02-01 --to 2026-02-28 --output json
+
+# Bank accounts
+boring-budget bank-account add --alias "Main Checking" --last4 1234 --output json
+boring-budget bank-account link set --target general_balance --account-id 1 --output json
+boring-budget bank-account link list --output json
+
+# Scheduled expenses
+boring-budget schedule add --name "Rent" --amount 1500.00 --currency USD --day 5 --start-month 2026-02 --output json
+boring-budget schedule run --through-date 2026-04-30 --output json
 
 # Portability
 boring-budget data export --resource entries --format json --file /tmp/entries.json --output json

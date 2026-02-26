@@ -1,0 +1,52 @@
+{
+  "ok": true,
+  "data": {
+    "scope": "both",
+    "lifetime": {
+      "by_currency": [
+        {
+          "currency_code": "USD",
+          "general_balance_minor": 350000,
+          "savings_balance_minor": 120000,
+          "total_balance_minor": 470000
+        }
+      ]
+    },
+    "range": {
+      "from_utc": "2026-02-01T00:00:00Z",
+      "to_utc": "2026-02-28T23:59:59.999999999Z",
+      "by_currency": [
+        {
+          "currency_code": "USD",
+          "general_balance_minor": 50000,
+          "savings_balance_minor": 20000,
+          "total_balance_minor": 70000
+        }
+      ]
+    },
+    "linked_accounts": [
+      {
+        "target": "general_balance",
+        "bank_account": {
+          "id": 1,
+          "alias": "Main Checking",
+          "last4": "1234"
+        }
+      },
+      {
+        "target": "savings",
+        "bank_account": {
+          "id": 2,
+          "alias": "Emergency Fund",
+          "last4": "9876"
+        }
+      }
+    ]
+  },
+  "warnings": [],
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "<timestamp_utc>"
+  }
+}

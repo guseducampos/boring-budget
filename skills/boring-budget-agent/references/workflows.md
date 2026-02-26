@@ -33,7 +33,8 @@ Use this reference when executing common `boring-budget` tasks repeatedly.
 3. Query back with filters:
    - `entry list --from ... --to ... --label-mode any|all|none --output json`
 4. Validate:
-   - amounts are integers in minor units
+   - ledger entities keep amounts in minor units
+   - report contracts expose monetary fields as `*_major` strings
    - timestamps are UTC values
 
 ## 3) Cap-safe expense writes
@@ -88,6 +89,23 @@ Use this reference when executing common `boring-budget` tasks repeatedly.
    - `data restore --file ... --output json`
 4. After restore, verify with:
    - `report monthly --month YYYY-MM --output json`
+
+## 5.1) Savings, bank-account links, and schedules
+
+1. Savings ledger operations:
+   - `savings transfer add --amount ... --currency ... --date ... --output json`
+   - `savings entry add --amount ... --currency ... --date ... --output json`
+   - `savings show --scope lifetime|range|both ... --output json`
+2. Bank-account metadata and links:
+   - `bank-account add --alias ... --last4 .... --output json`
+   - `bank-account list --output json`
+   - `bank-account link set --target general_balance|savings --account-id <id> --output json`
+   - `bank-account link clear --target general_balance|savings --output json`
+3. Scheduled fixed expenses:
+   - `schedule add --name ... --amount ... --currency ... --day 1..28 --start-month YYYY-MM --output json`
+   - `schedule list --output json`
+   - `schedule run --through-date YYYY-MM-DD [--dry-run] --output json`
+   - `schedule delete <id> --output json`
 
 ## 6) Error and exit handling
 

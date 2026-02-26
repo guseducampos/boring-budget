@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "data": {
+    "bank_account": {
+      "id": 1,
+      "alias": "Main Checking",
+      "last4": "1234",
+      "created_at_utc": "<timestamp_utc>",
+      "updated_at_utc": "<timestamp_utc>"
+    }
+  },
+  "warnings": [],
+  "error": null,
+  "meta": {
+    "api_version": "v1",
+    "timestamp_utc": "<timestamp_utc>"
+  }
+}

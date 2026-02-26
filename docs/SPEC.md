@@ -27,6 +27,7 @@ Build an agent-friendly Go CLI for personal budgeting with:
 - Bimonthly/quarterly are date-range presets (not separate storage models).
 - Deletes are non-destructive for categories/labels/cards.
 - Money is stored in minor units only (`amount_minor`) with `currency_code`.
+- Reporting contracts expose monetary fields as major-unit strings (`*_major`), while storage remains minor-unit.
 - Converted totals/net are optional and explicit.
 - Future-dated expense entries are checked immediately for cap warnings.
 - Time is stored in UTC; human rendering may use configured display timezone.
@@ -37,6 +38,9 @@ Build an agent-friendly Go CLI for personal budgeting with:
   - optional card linkage for expense entries
 - Credit card liability is tracked per card and currency.
 - Credit card overpayment is allowed and tracked as balance in favor of user.
+- Savings are tracked independently from general spending flow.
+- Users can associate optional bank accounts to `general_balance` and `savings`.
+- Scheduled monthly fixed expenses are first-class and executable deterministically.
 
 ## 3) Product Scope
 
@@ -55,6 +59,9 @@ Build an agent-friendly Go CLI for personal budgeting with:
 11. Card registry and lifecycle management.
 12. Credit liability tracking and payment events.
 13. Card due-day storage and due-date queries.
+14. Savings ledger (transfer-to-savings and independent savings adds).
+15. Optional bank-account registry and balance linkage.
+16. Scheduled monthly fixed-expense templates and execution.
 
 ### 3.2 Post-MVP candidates
 
@@ -152,6 +159,34 @@ Rules:
   - current date in display timezone
 - Reminders are out of current scope.
 
+### 4.8 Savings rules
+
+- Savings are tracked as explicit `savings_events`:
+  - `transfer_to_savings` (move from general to savings)
+  - `independent_add` (add directly to savings)
+- Expense consumption source is derived deterministically per currency:
+  - use general balance first
+  - then consume savings when general is insufficient
+  - if both are insufficient, remaining deficit stays in general balance
+- Savings reporting is provided via dedicated `savings` command surfaces.
+
+### 4.9 Bank-account linkage rules
+
+- Bank accounts are optional metadata entities with:
+  - `alias` (required, unique case-insensitively among active records)
+  - `last4` (required, exactly four digits)
+- Two optional linkage targets exist:
+  - `general_balance`
+  - `savings`
+- Linkage is mutable and non-destructive; clearing a link keeps the bank account record.
+
+### 4.10 Scheduled payment rules
+
+- Schedules represent monthly fixed expense templates (`day_of_month` in `1..28`).
+- Schedule execution is deterministic and idempotent per `(schedule_id, month_key)`.
+- Execution creates expense entries (cash default) and records generated occurrences.
+- Initial scope is manual execution (`schedule run`), not background automation/reminders.
+
 ## 5) Reporting, Balance, and Queries
 
 Reports must always separate:
@@ -184,6 +219,11 @@ Balance views:
 - lifetime
 - date range
 - both
+
+Report balance fields:
+- `period_balance`: net balance for the selected report period.
+- `general_balance`: lifetime general balance context.
+- `monthly_balance`: emitted on monthly scope reports.
 
 If currencies are mixed and no conversion is requested, return per-currency values.
 
@@ -256,6 +296,11 @@ Core entities:
 - `monthly_cap_changes`
 - `settings`
 - `fx_rate_snapshots`
+- `savings_events`
+- `bank_accounts`
+- `balance_account_links`
+- `scheduled_payments`
+- `scheduled_payment_executions`
 - `audit_events`
 - `schema_migrations`
 

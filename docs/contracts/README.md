@@ -26,8 +26,9 @@ This folder defines deterministic JSON contract examples for agent integrations.
 
 Rules:
 - Fixtures are canonicalized in tests before comparison; JSON object key order is not semantically relevant.
-- Store and return money in minor units only (`amount_minor`) plus `currency_code`.
-- Human-facing commands may accept major-unit input flags (for example, `--amount`), but persisted and JSON contract amounts remain `amount_minor`.
+- Persistence and core transaction entities remain minor-unit based (`amount_minor`) plus `currency_code`.
+- Report contracts (`report *` and report export) expose amount fields in major-unit string form (`*_major`).
+- Human-facing commands may accept major-unit input flags (for example, `--amount`) with deterministic conversion.
 - Use ISO-8601 UTC timestamps (`...Z`).
 - Replace volatile timestamps in examples with `<timestamp_utc>`.
 - Keep arrays deterministically ordered (typically by date, then ID).
@@ -48,6 +49,9 @@ Rules:
 - `report-range.json`: `report range --output json` success contract.
 - `report-bimonthly.json`: `report bimonthly --output json` success contract.
 - `report-quarterly.json`: `report quarterly --output json` success contract.
+- `bank-account-add.json`: `bank-account add --output json` success contract.
+- `savings-show.json`: `savings show --output json` success contract.
+- `schedule-add.json`: `schedule add --output json` success contract.
 - `balance-show.json`: `balance show --output json` success contract.
 - `setup-init.json`: `setup init --output json` onboarding success contract.
 - `data-export.json`: `data export --resource entries --output json` success contract.
