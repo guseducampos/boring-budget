@@ -8,230 +8,106 @@
 
 `boring-budget` is a local-first budgeting CLI built with Go + SQLite.
 
-It is intentionally simple:
-- Fast CLI workflows for humans
-- Stable JSON contracts for agents
-- Zero cloud lock-in by default
+It is designed for people who want:
+- Fast terminal workflows
+- Reliable local storage
+- Scriptable output for automation and agents
 
-If you want your money tracking to be reliable, scriptable, and not full of UI noise, this is for you.
+No dashboard noise. No cloud lock-in required.
 
-## Why Humans Use It
+## What It Is
 
-- Expenses and income, in one place
-- Categories and multi-label tagging
-- Monthly cap warnings without blocking your flow
-- Reports that answer real questions quickly
-- Local SQLite database you control (`$HOME/.boring-budget/boring-budget.db`)
+`boring-budget` is a deterministic money ledger for people and agents who prefer truth over UI abstraction.
 
-## Why Agents Like It
+It helps you:
+- Capture daily money movement with explicit rules
+- Track card liabilities and savings without hidden side effects
+- Generate reproducible reports across time windows and currencies
+- Automate budgeting workflows safely through stable JSON contracts
 
-- Deterministic JSON envelopes on core commands
-- Stable error codes and exit behavior
-- Contract-focused docs and regression tests
-- Non-destructive data semantics and auditability
+## What Makes It Different
 
-## Core Principles
+- Local-first, single SQLite database under your control
+- Agent-safe contract model (`ok`, `data`, `warnings`, `error`, `meta`)
+- Non-destructive semantics for key entities (soft deletes, orphan-safe behavior)
+- Overspend policy that warns instead of blocking writes
+- First-class support for cards, debt, savings, bank-account attribution, and fixed schedules
+- Deterministic export/import and backup/restore for portability and recovery
 
-- Money is stored in minor units only (`amount_minor`) + ISO currency code
-- Timestamps are stored in UTC
-- Human output can render UTC fields in your timezone
-- Deletes are non-destructive where possible
-- Core commands support both `--output human` and `--output json`
+## Capability Areas
 
-## Feature Summary
+- Ledger and taxonomy: income/expense entries, categories, labels, and combined filters
+- Budget control: monthly caps, cap history, and warning-based overspend feedback
+- Liability control: credit/debit card registry, due-day queries, debt summaries, payment events
+- Savings and attribution: transfers, direct savings adds, optional bank-account links
+- Predictable reporting: range/monthly/bimonthly/quarterly scopes with day/week/month grouping
+- Automation-ready output: stable error codes and exit behavior for workflows and agents
 
-- Category CRUD (`add|list|rename|delete`) with orphaning behavior on delete
-- Label CRUD (`add|list|rename|delete`) with link detachment on delete
-- Entry CRUD (`add|update|list|delete`) with optional category, labels, and note
-- Cap management (`set|show|history`) with cap-change history
-- Overspend policy: allow write + emit warning
-- Reports (`range|monthly|bimonthly|quarterly`) with group-by (`day|week|month`)
-- Balance views (`lifetime|range|both`)
-- FX conversion via Frankfurter/ECB with persisted rate snapshots
-- Onboarding setup (`setup init|show`)
-- Portability (`data export|import|backup|restore`) for JSON/CSV + full DB backup
-- Hardened restore path with integrity validation + rollback snapshot strategy
+## Agent Skill (OpenClaw and Others)
+
+Use the built-in skill pack when running this project with OpenClaw or any compatible coding/automation agent:
+
+- Skill file: `skills/boring-budget-agent/SKILL.md`
+- Workflow playbook: `skills/boring-budget-agent/references/workflows.md`
+- OpenClaw/OpenAI agent profile: `skills/boring-budget-agent/agents/openai.yaml`
+
+Recommended skill invocation:
+
+```text
+$boring-budget-agent
+```
+
+This skill enforces deterministic JSON mode, stable error/exit handling, and safe write semantics.
 
 ## Installation
 
-### Homebrew (easiest)
+### Homebrew
 
 ```bash
 brew install guseducampos/tap/boring-budget
 ```
 
-### Universal binary
+### Build from source
 
-- Download the artifact for your platform from CI/release outputs:
-  - `darwin/amd64`, `darwin/arm64`
-  - `linux/amd64`, `linux/arm64`
-- Move the binary to your `PATH` and make it executable on macOS/Linux:
-
-```bash
-chmod +x boring-budget
-```
-
-Then verify:
-
-```bash
-boring-budget --help
-```
-
-### Build from source (development)
-
-Prerequisite:
-- Go `1.24+`
+Prerequisite: Go `1.24+`
 
 ```bash
 go install ./cmd/boring-budget
 ```
 
-Or run directly:
+### Verify
 
 ```bash
-go run ./cmd/boring-budget --help
+boring-budget --help
 ```
 
-## Quick Start
-
-Get useful output in under a minute.
-
-### 1) Initialize settings
+## First Run
 
 ```bash
 boring-budget setup init \
   --default-currency USD \
   --timezone America/New_York \
-  --opening-balance 1000.00 \
-  --opening-balance-date 2026-02-01 \
-  --month-cap 500.00 \
-  --month-cap-month 2026-02
+  --opening-balance 1000.00
 ```
 
-### 2) Create categories and labels
+Then inspect state:
 
 ```bash
-boring-budget category add "Food"
-boring-budget label add "Recurring"
-```
-
-### 3) Add entries
-
-```bash
-boring-budget entry add \
-  --type income \
-  --amount 3500.00 \
-  --currency USD \
-  --date 2026-02-01 \
-  --note "Salary"
-
-boring-budget entry add \
-  --type expense \
-  --amount 12.50 \
-  --currency USD \
-  --date 2026-02-11 \
-  --category-id 1 \
-  --label-id 1 \
-  --note "Lunch"
-```
-
-### 4) Run reports
-
-```bash
-boring-budget report monthly --month 2026-02 --group-by month
-boring-budget balance show --scope both --from 2026-02-01 --to 2026-02-28
-```
-
-## Command Guide
-
-### Global flags
-
-```bash
---output human|json
---timezone <IANA TZ>
---db-path <sqlite file>
---migrations-dir <path>
-```
-
-### Categories
-
-```bash
-boring-budget category add <name>
-boring-budget category list
-boring-budget category rename <id> <new-name>
-boring-budget category delete <id>
-```
-
-### Labels
-
-```bash
-boring-budget label add <name>
-boring-budget label list
-boring-budget label rename <id> <new-name>
-boring-budget label delete <id>
-```
-
-### Entries
-
-```bash
-boring-budget entry add --type income|expense --amount <decimal> --currency <ISO> --date <RFC3339|YYYY-MM-DD> [--category-id <id>] [--label-id <id>] [--note <text>]
-boring-budget entry update <id> [--type ...] [--amount ...] [--currency ...] [--date ...] [--category-id <id>|--clear-category] [--label-id <id>|--clear-labels] [--note <text>|--clear-note]
-boring-budget entry list [--type ...] [--category-id ...] [--from ...] [--to ...] [--note-contains <text>] [--label-id ...] [--label-mode any|all|none]
-boring-budget entry delete <id>
-```
-
-Note: `--note` is an optional description field for entries, and `entry list --note-contains` supports case-insensitive substring matching.
-
-### Caps
-
-```bash
-boring-budget cap set --month YYYY-MM --amount <decimal> --currency <ISO>
-boring-budget cap show --month YYYY-MM
-boring-budget cap history --month YYYY-MM
-```
-
-### Reports
-
-```bash
-boring-budget report range --from <date> --to <date> [--group-by day|week|month] [--category-id <id>] [--label-id <id>] [--label-mode any|all|none] [--convert-to <ISO>]
-boring-budget report monthly --month YYYY-MM [...same optional filters...]
-boring-budget report bimonthly --month YYYY-MM [...same optional filters...]
-boring-budget report quarterly --month YYYY-MM [...same optional filters...]
-```
-
-### Balance
-
-```bash
-boring-budget balance show --scope lifetime|range|both [--from <date>] [--to <date>] [--category-id <id>] [--label-id <id>] [--label-mode any|all|none] [--convert-to <ISO>]
-```
-
-### Setup
-
-```bash
-boring-budget setup init --default-currency <ISO> --timezone <IANA>
 boring-budget setup show
+boring-budget report monthly --month 2026-02
 ```
 
-### Data portability
+## Command Reference
 
-```bash
-boring-budget data export --resource entries --format json|csv --file <path> [--from <date>] [--to <date>]
-boring-budget data export --resource report --format json|csv --file <path> --report-scope range|monthly|bimonthly|quarterly [scope flags] [filters]
-boring-budget data import --format json|csv --file <path> [--idempotent]
-boring-budget data backup --file <path>
-boring-budget data restore --file <path>
-```
+- Full command catalog moved to: `docs/COMMANDS.md`
+- Quick runtime help: `boring-budget --help`
+- Command-level help: `boring-budget <command> --help`
 
-Restore details:
-- Uses command context for cancellation.
-- Validates DB with `PRAGMA integrity_check` before success.
-- Rolls back to pre-restore snapshot if validation fails.
+## JSON Contract Surface
 
-## Agent/LLM Integration
+For automation flows, use `--output json`.
 
-`boring-budget` is contract-first for JSON mode.
-
-### JSON envelope
+Core envelope:
 
 ```json
 {
@@ -246,73 +122,31 @@ Restore details:
 }
 ```
 
-Contract docs and examples:
+Contracts and examples:
 - `docs/contracts/README.md`
 - `docs/contracts/errors.md`
 - `docs/contracts/exit-codes.md`
+- `docs/contracts/*.json`
 
-## Architecture
+## Data Location and Safety
 
-Primary package layout:
-- `cmd/boring-budget`: CLI entrypoint
-- `internal/cli`: Cobra commands, input parsing, rendering
-- `internal/service`: use-case orchestration
-- `internal/domain`: entities and business invariants
-- `internal/store/sqlite`: SQLC-backed repositories
-- `internal/reporting`: deterministic aggregation logic
-- `internal/fx`: exchange-rate provider + converter
-- `internal/config`: local config path defaults
-- `migrations`: Goose migrations
-- `docs/contracts`: agent-facing contract examples
+- Default DB path: `$HOME/.boring-budget/boring-budget.db`
+- SQLite WAL mode enabled
+- UTC storage with timezone-aware rendering
+- Soft deletes for key entities
+- Restore includes integrity checks and rollback strategy
 
 ## Development
 
-### Test
-
 ```bash
+gofmt -w <edited-files>.go
 go test ./...
 ```
 
-### CI
-
-- GitHub Actions workflow: `.github/workflows/ci.yml`
-- On `pull_request` and `push` to `master`, CI runs:
-  - tests on `ubuntu-latest`, `macos-latest`
-  - cross-platform builds for:
-    - `darwin/amd64`, `darwin/arm64`
-    - `linux/amd64`, `linux/arm64`
-- Build artifacts are uploaded per target with SHA256 checksum files.
-- Release workflow: `.github/workflows/release.yml`
-  - Triggered on `v*` tags
-  - Manual runs are validated to require a `v*` tag ref
-  - Publishes GitHub release assets using GoReleaser
-  - Updates Homebrew formula in `guseducampos/homebrew-tap` (requires `HOMEBREW_TAP_GITHUB_TOKEN` secret)
-
-### Important implementation notes
-
-- Migrations are managed with Goose.
-- Repository query layer uses SQLC.
-- JSON contract determinism is guarded by golden tests and docs-sync tests.
-- Project-level implementation rules live in `AGENTS.md`.
-
-## Contributing
-
-Issues and PRs are welcome.
-
-Before opening a PR:
-- run `go test ./...`
-- keep commits atomic
-- update `CHANGELOG.md` for significant changes
-- update/add contracts under `docs/contracts` when JSON behavior changes
-
-## Documentation
-
-- Docs router (start here): `docs/README.md`
-- Unified specification (canonical): `docs/SPEC.md`
-- Agent contracts: `docs/contracts/README.md`
-- Docs discovery helper: `./scripts/docs-list.sh`
-- Changelog: `CHANGELOG.md`
+Canonical behavior specs and contracts:
+- `docs/SPEC.md`
+- `docs/contracts/README.md`
 
 ## License
 
-MIT. See `LICENSE`.
+[MIT](./LICENSE)

@@ -34,7 +34,13 @@ This prints markdown docs with `summary` and `read_when` metadata.
 
 Use these for deterministic CLI JSON behavior, warning/error handling, and exit-code mapping.
 
-## 4) Docs update policy
+## 4) Command catalog
+
+- `docs/COMMANDS.md`
+
+Use this when you need a quick map of top-level commands while keeping README focused on product positioning and onboarding context.
+
+## 5) Docs update policy
 
 When behavior changes:
 1. Update `docs/SPEC.md` (or `docs/contracts/*` for contract-only changes).
