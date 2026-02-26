@@ -114,6 +114,9 @@ Use this reference when executing common `boring-budget` tasks repeatedly.
    - same bank account can be linked to both `general_balance` and `savings`
 3. Scheduled fixed expenses:
    - `schedule add --name ... --amount ... --currency ... --day 1..28 --start-month YYYY-MM --output json`
+   - `schedule add` auto-registers a managed user crontab entry on Linux/macOS
+   - if cron registration fails, `schedule add` fails and no schedule row is created
+   - schedules recur monthly; use matching `--start-month` and `--end-month` for a single-month schedule
    - `schedule list --output json`
    - `schedule run --through-date YYYY-MM-DD [--dry-run] --output json`
    - `schedule delete <id> --output json`

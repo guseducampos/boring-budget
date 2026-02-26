@@ -51,6 +51,10 @@ Use this skill to run `boring-budget` commands with deterministic behavior for A
    - deleting a category orphans linked entries
    - deleting a label removes links only
 10. Treat overspend warnings as non-blocking writes (`CAP_EXCEEDED` warns, does not fail).
+11. Schedule automation behavior:
+   - `schedule add` automatically ensures a managed user crontab entry exists on Linux/macOS.
+   - if crontab registration fails, `schedule add` fails (schedule is not created).
+   - schedules are monthly recurring templates; set `--start-month` equal to `--end-month` for one-time month-only behavior.
 
 ## Standard execution flow
 
@@ -120,7 +124,9 @@ boring-budget bank-account balance show --scope both --from 2026-02-01 --to 2026
 
 # Scheduled expenses
 boring-budget schedule add --name "Rent" --amount 1500.00 --currency USD --day 5 --start-month 2026-02 --output json
+boring-budget schedule add --name "One-time tax" --amount 300.00 --currency USD --day 20 --start-month 2026-04 --end-month 2026-04 --output json
 boring-budget schedule run --through-date 2026-04-30 --output json
+boring-budget schedule delete 1 --output json
 
 # Portability
 boring-budget data export --resource entries --format json --file /tmp/entries.json --output json
