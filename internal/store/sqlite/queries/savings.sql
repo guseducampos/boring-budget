@@ -4,11 +4,13 @@ INSERT INTO savings_events (
     amount_minor,
     currency_code,
     event_date_utc,
+    source_bank_account_id,
+    destination_bank_account_id,
     note
-) VALUES (?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListSavingsEvents :many
-SELECT id, event_type, amount_minor, currency_code, event_date_utc, note, created_at_utc
+SELECT id, event_type, amount_minor, currency_code, event_date_utc, source_bank_account_id, destination_bank_account_id, note, created_at_utc
 FROM savings_events
 WHERE (sqlc.narg(date_from_utc) IS NULL OR event_date_utc >= sqlc.narg(date_from_utc))
   AND (sqlc.narg(date_to_utc) IS NULL OR event_date_utc <= sqlc.narg(date_to_utc))

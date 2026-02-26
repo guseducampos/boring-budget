@@ -5,20 +5,22 @@ INSERT INTO transactions (
     currency_code,
     transaction_date_utc,
     category_id,
+    bank_account_id,
     note
-) VALUES (?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetActiveEntryByID :one
-SELECT id, type, amount_minor, currency_code, transaction_date_utc, category_id, note, created_at_utc, updated_at_utc, deleted_at_utc
+SELECT id, type, amount_minor, currency_code, transaction_date_utc, category_id, bank_account_id, note, created_at_utc, updated_at_utc, deleted_at_utc
 FROM transactions
 WHERE id = ? AND deleted_at_utc IS NULL;
 
 -- name: ListActiveEntries :many
-SELECT id, type, amount_minor, currency_code, transaction_date_utc, category_id, note, created_at_utc, updated_at_utc, deleted_at_utc
+SELECT id, type, amount_minor, currency_code, transaction_date_utc, category_id, bank_account_id, note, created_at_utc, updated_at_utc, deleted_at_utc
 FROM transactions
 WHERE deleted_at_utc IS NULL
   AND (sqlc.narg(entry_type) IS NULL OR type = sqlc.narg(entry_type))
   AND (sqlc.narg(category_id) IS NULL OR category_id = sqlc.narg(category_id))
+  AND (sqlc.narg(bank_account_id) IS NULL OR bank_account_id = sqlc.narg(bank_account_id))
   AND (sqlc.narg(date_from_utc) IS NULL OR transaction_date_utc >= sqlc.narg(date_from_utc))
   AND (sqlc.narg(date_to_utc) IS NULL OR transaction_date_utc <= sqlc.narg(date_to_utc))
   AND (sqlc.narg(note_contains) IS NULL OR (note IS NOT NULL AND instr(lower(note), lower(sqlc.narg(note_contains))) > 0))
@@ -52,6 +54,11 @@ END,
     WHEN sqlc.arg(set_category_id) = 1 THEN sqlc.narg(category_id)
     ELSE category_id
 END,
+    bank_account_id = CASE
+    WHEN sqlc.arg(clear_bank_account) = 1 THEN NULL
+    WHEN sqlc.arg(set_bank_account_id) = 1 THEN sqlc.narg(bank_account_id)
+    ELSE bank_account_id
+END,
     note = CASE
     WHEN sqlc.arg(clear_note) = 1 THEN NULL
     WHEN sqlc.arg(set_note) = 1 THEN sqlc.narg(note)
@@ -79,6 +86,7 @@ WHERE tl.deleted_at_utc IS NULL
   AND t.deleted_at_utc IS NULL
   AND (sqlc.narg(entry_type) IS NULL OR t.type = sqlc.narg(entry_type))
   AND (sqlc.narg(category_id) IS NULL OR t.category_id = sqlc.narg(category_id))
+  AND (sqlc.narg(bank_account_id) IS NULL OR t.bank_account_id = sqlc.narg(bank_account_id))
   AND (sqlc.narg(date_from_utc) IS NULL OR t.transaction_date_utc >= sqlc.narg(date_from_utc))
   AND (sqlc.narg(date_to_utc) IS NULL OR t.transaction_date_utc <= sqlc.narg(date_to_utc))
   AND (sqlc.narg(note_contains) IS NULL OR (t.note IS NOT NULL AND instr(lower(t.note), lower(sqlc.narg(note_contains))) > 0))
@@ -100,5 +108,12 @@ SELECT EXISTS(
 SELECT EXISTS(
     SELECT 1
     FROM labels
+    WHERE id = ? AND deleted_at_utc IS NULL
+);
+
+-- name: ExistsActiveBankAccountByID :one
+SELECT EXISTS(
+    SELECT 1
+    FROM bank_accounts
     WHERE id = ? AND deleted_at_utc IS NULL
 );

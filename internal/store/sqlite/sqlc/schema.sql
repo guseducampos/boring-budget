@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),
     transaction_date_utc TEXT NOT NULL,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+    bank_account_id INTEGER REFERENCES bank_accounts(id) ON DELETE SET NULL,
     note TEXT,
     created_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -46,6 +47,10 @@ CREATE INDEX IF NOT EXISTS idx_transactions_category
 
 CREATE INDEX IF NOT EXISTS idx_transactions_deleted_date
     ON transactions (deleted_at_utc, transaction_date_utc);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_bank_account_date
+    ON transactions (bank_account_id, transaction_date_utc, id)
+    WHERE deleted_at_utc IS NULL AND bank_account_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS cards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -161,6 +166,8 @@ CREATE TABLE IF NOT EXISTS savings_events (
     amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
     currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),
     event_date_utc TEXT NOT NULL,
+    source_bank_account_id INTEGER REFERENCES bank_accounts(id) ON DELETE SET NULL,
+    destination_bank_account_id INTEGER REFERENCES bank_accounts(id) ON DELETE SET NULL,
     note TEXT,
     created_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -170,6 +177,14 @@ CREATE INDEX IF NOT EXISTS idx_savings_events_date_currency
 
 CREATE INDEX IF NOT EXISTS idx_savings_events_type_date
     ON savings_events (event_type, event_date_utc, id);
+
+CREATE INDEX IF NOT EXISTS idx_savings_events_source_account_date
+    ON savings_events (source_bank_account_id, event_date_utc, id)
+    WHERE source_bank_account_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_savings_events_destination_account_date
+    ON savings_events (destination_bank_account_id, event_date_utc, id)
+    WHERE destination_bank_account_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS bank_accounts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
