@@ -53,6 +53,14 @@ func (s *entryCardResolverStub) Resolve(ctx context.Context, selector domain.Car
 	return s.resolveFn(ctx, selector)
 }
 
+type entryBalanceLinkReaderStub struct {
+	listFn func(ctx context.Context) ([]domain.BalanceAccountLink, error)
+}
+
+func (s *entryBalanceLinkReaderStub) ListBalanceLinks(ctx context.Context) ([]domain.BalanceAccountLink, error) {
+	return s.listFn(ctx)
+}
+
 func TestNewEntryServiceRequiresRepo(t *testing.T) {
 	t.Parallel()
 
@@ -115,6 +123,56 @@ func TestEntryServiceAddNormalizesInput(t *testing.T) {
 
 	if entry.ID != 1 {
 		t.Fatalf("expected entry id 1, got %d", entry.ID)
+	}
+}
+
+func TestEntryServiceAddDefaultsBankAccountFromGeneralLink(t *testing.T) {
+	t.Parallel()
+
+	generalAccountID := int64(42)
+
+	svc, err := NewEntryService(
+		&entryRepoStub{
+			addFn: func(ctx context.Context, input domain.EntryAddInput) (domain.Entry, error) {
+				if input.BankAccountID == nil || *input.BankAccountID != generalAccountID {
+					t.Fatalf("expected default bank account id %d, got %v", generalAccountID, input.BankAccountID)
+				}
+				return domain.Entry{ID: 7, BankAccountID: input.BankAccountID}, nil
+			},
+			updateFn: func(context.Context, domain.EntryUpdateInput) (domain.Entry, error) {
+				return domain.Entry{}, nil
+			},
+			listFn:   func(context.Context, domain.EntryListFilter) ([]domain.Entry, error) { return nil, nil },
+			deleteFn: func(context.Context, int64) (domain.EntryDeleteResult, error) { return domain.EntryDeleteResult{}, nil },
+		},
+		WithEntryBalanceLinkReader(&entryBalanceLinkReaderStub{
+			listFn: func(ctx context.Context) ([]domain.BalanceAccountLink, error) {
+				return []domain.BalanceAccountLink{
+					{
+						Target: domain.BalanceLinkTargetGeneral,
+						BankAccount: &domain.BankAccount{
+							ID: generalAccountID,
+						},
+					},
+				}, nil
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("new entry service: %v", err)
+	}
+
+	entry, err := svc.Add(context.Background(), domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        1000,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-01",
+	})
+	if err != nil {
+		t.Fatalf("add entry: %v", err)
+	}
+	if entry.BankAccountID == nil || *entry.BankAccountID != generalAccountID {
+		t.Fatalf("expected entry bank account id %d, got %v", generalAccountID, entry.BankAccountID)
 	}
 }
 

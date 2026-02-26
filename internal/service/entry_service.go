@@ -14,6 +14,7 @@ type EntryService struct {
 	repo         EntryRepository
 	capLookup    EntryCapLookup
 	cardResolver EntryCardResolver
+	linkReader   EntryBalanceLinkReader
 }
 
 type EntryRepository = ports.EntryRepository
@@ -29,6 +30,10 @@ type EntryCardResolver interface {
 	Resolve(ctx context.Context, selector domain.CardSelector) (domain.Card, error)
 }
 
+type EntryBalanceLinkReader interface {
+	ListBalanceLinks(ctx context.Context) ([]domain.BalanceAccountLink, error)
+}
+
 type EntryServiceOption func(*EntryService)
 
 func WithEntryCapLookup(capLookup EntryCapLookup) EntryServiceOption {
@@ -40,6 +45,12 @@ func WithEntryCapLookup(capLookup EntryCapLookup) EntryServiceOption {
 func WithEntryCardResolver(cardResolver EntryCardResolver) EntryServiceOption {
 	return func(service *EntryService) {
 		service.cardResolver = cardResolver
+	}
+}
+
+func WithEntryBalanceLinkReader(linkReader EntryBalanceLinkReader) EntryServiceOption {
+	return func(service *EntryService) {
+		service.linkReader = linkReader
 	}
 }
 
@@ -90,6 +101,9 @@ func (s *EntryService) AddWithWarnings(ctx context.Context, input domain.EntryAd
 	if err := domain.ValidateOptionalCategoryID(input.CategoryID); err != nil {
 		return EntryAddResult{}, err
 	}
+	if err := domain.ValidateOptionalBankAccountID(input.BankAccountID); err != nil {
+		return EntryAddResult{}, err
+	}
 	normalizedLabelIDs, err := domain.NormalizeLabelIDs(input.LabelIDs)
 	if err != nil {
 		return EntryAddResult{}, err
@@ -123,6 +137,10 @@ func (s *EntryService) AddWithWarnings(ctx context.Context, input domain.EntryAd
 	if err != nil {
 		return EntryAddResult{}, err
 	}
+	resolvedBankAccountID, err := s.resolveEntryBankAccountID(ctx, input.BankAccountID)
+	if err != nil {
+		return EntryAddResult{}, err
+	}
 
 	entry, err := s.repo.Add(ctx, domain.EntryAddInput{
 		Type:               normalizedType,
@@ -130,6 +148,7 @@ func (s *EntryService) AddWithWarnings(ctx context.Context, input domain.EntryAd
 		CurrencyCode:       normalizedCurrency,
 		TransactionDateUTC: normalizedDate,
 		CategoryID:         input.CategoryID,
+		BankAccountID:      resolvedBankAccountID,
 		LabelIDs:           normalizedLabelIDs,
 		Note:               strings.TrimSpace(input.Note),
 		PaymentMethod:      normalizedPaymentMethod,
@@ -215,6 +234,10 @@ func (s *EntryService) List(ctx context.Context, filter domain.EntryListFilter) 
 		return nil, err
 	}
 	normalizedFilter.CategoryID = filter.CategoryID
+	if err := domain.ValidateOptionalBankAccountID(filter.BankAccountID); err != nil {
+		return nil, err
+	}
+	normalizedFilter.BankAccountID = filter.BankAccountID
 
 	dateFromUTC, err := domain.NormalizeOptionalTransactionDateUTC(filter.DateFromUTC)
 	if err != nil {
@@ -327,6 +350,16 @@ func (s *EntryService) UpdateWithWarnings(ctx context.Context, input domain.Entr
 			}
 			categoryID := *input.CategoryID
 			normalized.CategoryID = &categoryID
+		}
+	}
+	if input.SetBankAccount {
+		normalized.SetBankAccount = true
+		if err := domain.ValidateOptionalBankAccountID(input.BankAccountID); err != nil {
+			return EntryAddResult{}, err
+		}
+		if input.BankAccountID != nil {
+			value := *input.BankAccountID
+			normalized.BankAccountID = &value
 		}
 	}
 
@@ -551,4 +584,37 @@ func (s *EntryService) resolvePaymentCardID(ctx context.Context, cardID *int64, 
 
 	value := card.ID
 	return &value, nil
+}
+
+func (s *EntryService) resolveEntryBankAccountID(ctx context.Context, bankAccountID *int64) (*int64, error) {
+	if bankAccountID != nil {
+		value := *bankAccountID
+		return &value, nil
+	}
+
+	if s.linkReader == nil {
+		return nil, nil
+	}
+
+	links, err := s.linkReader.ListBalanceLinks(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	accountID := linkedAccountIDByTarget(links, domain.BalanceLinkTargetGeneral)
+	if accountID == nil {
+		return nil, nil
+	}
+	value := *accountID
+	return &value, nil
+}
+
+func linkedAccountIDByTarget(links []domain.BalanceAccountLink, target string) *int64 {
+	for _, link := range links {
+		if link.Target == target && link.BankAccount != nil {
+			value := link.BankAccount.ID
+			return &value
+		}
+	}
+	return nil
 }

@@ -292,6 +292,86 @@ func TestBankAccountBalanceShowPerAccount(t *testing.T) {
 	}
 }
 
+func TestBankAccountBalanceShowAllowsSameLinkedAccountForGeneralAndSavings(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	addUnified := executeBankAccountCmdJSON(t, db, []string{
+		"add",
+		"--alias", "Unified Account",
+		"--last4", "9999",
+	})
+	unifiedID := int64(mustMap(t, mustMap(t, addUnified["data"])["bank_account"])["id"].(float64))
+
+	mustEntrySuccess(t, executeBankAccountCmdJSON(t, db, []string{
+		"link", "set",
+		"--target", "general_balance",
+		"--account-id", strconv.FormatInt(unifiedID, 10),
+	}))
+	mustEntrySuccess(t, executeBankAccountCmdJSON(t, db, []string{
+		"link", "set",
+		"--target", "savings",
+		"--account-id", strconv.FormatInt(unifiedID, 10),
+	}))
+
+	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "income",
+		"--amount", "100.00",
+		"--currency", "USD",
+		"--date", "2026-02-01",
+	}))
+	mustEntrySuccess(t, executeSavingsCmdJSON(t, db, []string{
+		"transfer", "add",
+		"--amount", "30.00",
+		"--currency", "USD",
+		"--date", "2026-02-02",
+	}))
+	mustEntrySuccess(t, executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "expense",
+		"--amount", "85.00",
+		"--currency", "USD",
+		"--date", "2026-02-03",
+	}))
+
+	balance := executeBankAccountCmdJSON(t, db, []string{
+		"balance", "show",
+		"--scope", "lifetime",
+	})
+	if ok, _ := balance["ok"].(bool); !ok {
+		t.Fatalf("expected balance show ok=true payload=%v", balance)
+	}
+
+	data := mustMap(t, balance["data"])
+	lifetime := mustMap(t, data["lifetime"])
+	accounts := mustAnySlice(t, lifetime["accounts"])
+	if len(accounts) != 1 {
+		t.Fatalf("expected exactly one account row, got %d", len(accounts))
+	}
+
+	row := mustMap(t, accounts[0])
+	if int64(row["account_id"].(float64)) != unifiedID {
+		t.Fatalf("expected account_id %d, got %v", unifiedID, row["account_id"])
+	}
+	byCurrency := mustAnySlice(t, row["by_currency"])
+	if len(byCurrency) != 1 {
+		t.Fatalf("expected one currency row, got %v", byCurrency)
+	}
+	usd := mustMap(t, byCurrency[0])
+	if int64(usd["general_balance_minor"].(float64)) != 0 {
+		t.Fatalf("expected general_balance_minor 0, got %v", usd["general_balance_minor"])
+	}
+	if int64(usd["savings_balance_minor"].(float64)) != 1500 {
+		t.Fatalf("expected savings_balance_minor 1500, got %v", usd["savings_balance_minor"])
+	}
+	if int64(usd["total_balance_minor"].(float64)) != 1500 {
+		t.Fatalf("expected total_balance_minor 1500, got %v", usd["total_balance_minor"])
+	}
+}
+
 func executeBankAccountCmdJSON(t *testing.T, db *sql.DB, args []string) map[string]any {
 	t.Helper()
 

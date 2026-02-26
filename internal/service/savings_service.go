@@ -19,16 +19,23 @@ type SavingsEventRepository interface {
 	ListEvents(ctx context.Context, filter domain.SavingsEventListFilter) ([]domain.SavingsEvent, error)
 }
 
+type SavingsBalanceLinkReader interface {
+	ListBalanceLinks(ctx context.Context) ([]domain.BalanceAccountLink, error)
+}
+
 type SavingsService struct {
 	entryReader SavingsEntryReader
 	eventRepo   SavingsEventRepository
+	linkReader  SavingsBalanceLinkReader
 }
 
 type SavingsAddInput struct {
-	AmountMinor  int64
-	CurrencyCode string
-	EventDateUTC string
-	Note         string
+	AmountMinor              int64
+	CurrencyCode             string
+	EventDateUTC             string
+	SourceBankAccountID      *int64
+	DestinationBankAccountID *int64
+	Note                     string
 }
 
 type SavingsShowRequest struct {
@@ -60,7 +67,15 @@ type savingsBalance struct {
 	savings int64
 }
 
-func NewSavingsService(entryReader SavingsEntryReader, eventRepo SavingsEventRepository) (*SavingsService, error) {
+type SavingsServiceOption func(*SavingsService)
+
+func WithSavingsBalanceLinkReader(linkReader SavingsBalanceLinkReader) SavingsServiceOption {
+	return func(service *SavingsService) {
+		service.linkReader = linkReader
+	}
+}
+
+func NewSavingsService(entryReader SavingsEntryReader, eventRepo SavingsEventRepository, opts ...SavingsServiceOption) (*SavingsService, error) {
 	if entryReader == nil {
 		return nil, fmt.Errorf("savings service: entry reader is required")
 	}
@@ -68,10 +83,16 @@ func NewSavingsService(entryReader SavingsEntryReader, eventRepo SavingsEventRep
 		return nil, fmt.Errorf("savings service: event repo is required")
 	}
 
-	return &SavingsService{
+	service := &SavingsService{
 		entryReader: entryReader,
 		eventRepo:   eventRepo,
-	}, nil
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(service)
+		}
+	}
+	return service, nil
 }
 
 func (s *SavingsService) AddTransfer(ctx context.Context, input SavingsAddInput) (domain.SavingsEvent, error) {
@@ -148,13 +169,26 @@ func (s *SavingsService) addEvent(ctx context.Context, eventType string, input S
 	if err != nil {
 		return domain.SavingsEvent{}, err
 	}
+	if err := domain.ValidateOptionalBankAccountID(input.SourceBankAccountID); err != nil {
+		return domain.SavingsEvent{}, err
+	}
+	if err := domain.ValidateOptionalBankAccountID(input.DestinationBankAccountID); err != nil {
+		return domain.SavingsEvent{}, err
+	}
+
+	sourceBankAccountID, destinationBankAccountID, err := s.resolveSavingsEventAccounts(ctx, normalizedEventType, input)
+	if err != nil {
+		return domain.SavingsEvent{}, err
+	}
 
 	return s.eventRepo.AddEvent(ctx, domain.SavingsEventAddInput{
-		EventType:    normalizedEventType,
-		AmountMinor:  input.AmountMinor,
-		CurrencyCode: normalizedCurrency,
-		EventDateUTC: normalizedDate,
-		Note:         strings.TrimSpace(input.Note),
+		EventType:                normalizedEventType,
+		AmountMinor:              input.AmountMinor,
+		CurrencyCode:             normalizedCurrency,
+		EventDateUTC:             normalizedDate,
+		SourceBankAccountID:      sourceBankAccountID,
+		DestinationBankAccountID: destinationBankAccountID,
+		Note:                     strings.TrimSpace(input.Note),
 	})
 }
 
@@ -325,4 +359,45 @@ func parseSavingsReplayDate(value string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, domain.ErrInvalidTransactionDate
+}
+
+func (s *SavingsService) resolveSavingsEventAccounts(ctx context.Context, eventType string, input SavingsAddInput) (*int64, *int64, error) {
+	source := copyInt64Ptr(input.SourceBankAccountID)
+	destination := copyInt64Ptr(input.DestinationBankAccountID)
+
+	if s.linkReader == nil {
+		return source, destination, nil
+	}
+
+	links, err := s.linkReader.ListBalanceLinks(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	generalAccountID := linkedAccountIDByTarget(links, domain.BalanceLinkTargetGeneral)
+	savingsAccountID := linkedAccountIDByTarget(links, domain.BalanceLinkTargetSavings)
+
+	switch eventType {
+	case domain.SavingsEventTypeTransferToSavings:
+		if source == nil {
+			source = copyInt64Ptr(generalAccountID)
+		}
+		if destination == nil {
+			destination = copyInt64Ptr(savingsAccountID)
+		}
+	case domain.SavingsEventTypeIndependentAdd:
+		if destination == nil {
+			destination = copyInt64Ptr(savingsAccountID)
+		}
+	}
+
+	return source, destination, nil
+}
+
+func copyInt64Ptr(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
 }

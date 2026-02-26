@@ -15,21 +15,25 @@ var (
 )
 
 type SavingsEvent struct {
-	ID           int64  `json:"id"`
-	EventType    string `json:"event_type"`
-	AmountMinor  int64  `json:"amount_minor"`
-	CurrencyCode string `json:"currency_code"`
-	EventDateUTC string `json:"event_date_utc"`
-	Note         string `json:"note,omitempty"`
-	CreatedAtUTC string `json:"created_at_utc"`
+	ID                       int64  `json:"id"`
+	EventType                string `json:"event_type"`
+	AmountMinor              int64  `json:"amount_minor"`
+	CurrencyCode             string `json:"currency_code"`
+	EventDateUTC             string `json:"event_date_utc"`
+	SourceBankAccountID      *int64 `json:"source_bank_account_id,omitempty"`
+	DestinationBankAccountID *int64 `json:"destination_bank_account_id,omitempty"`
+	Note                     string `json:"note,omitempty"`
+	CreatedAtUTC             string `json:"created_at_utc"`
 }
 
 type SavingsEventAddInput struct {
-	EventType    string
-	AmountMinor  int64
-	CurrencyCode string
-	EventDateUTC string
-	Note         string
+	EventType                string
+	AmountMinor              int64
+	CurrencyCode             string
+	EventDateUTC             string
+	SourceBankAccountID      *int64
+	DestinationBankAccountID *int64
+	Note                     string
 }
 
 type SavingsEventListFilter struct {

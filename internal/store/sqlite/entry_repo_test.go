@@ -209,6 +209,74 @@ func TestEntryRepoListFiltersByTypeCategoryAndDate(t *testing.T) {
 	}
 }
 
+func TestEntryRepoBankAccountAttributionAndFilter(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db := openEntryTestDB(t)
+	defer db.Close()
+
+	repo := NewEntryRepo(db)
+	accountA := insertBankAccountForEntryTest(t, ctx, db, "Wallet A", "1111")
+	accountB := insertBankAccountForEntryTest(t, ctx, db, "Wallet B", "2222")
+
+	entryA, err := repo.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        1000,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-01T00:00:00Z",
+		BankAccountID:      &accountA,
+	})
+	if err != nil {
+		t.Fatalf("add entry A: %v", err)
+	}
+	if entryA.BankAccountID == nil || *entryA.BankAccountID != accountA {
+		t.Fatalf("expected bank_account_id %d, got %v", accountA, entryA.BankAccountID)
+	}
+
+	if _, err := repo.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        1500,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-02T00:00:00Z",
+		BankAccountID:      &accountB,
+	}); err != nil {
+		t.Fatalf("add entry B: %v", err)
+	}
+	if _, err := repo.Add(ctx, domain.EntryAddInput{
+		Type:               domain.EntryTypeExpense,
+		AmountMinor:        2000,
+		CurrencyCode:       "USD",
+		TransactionDateUTC: "2026-02-03T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("add entry without bank account: %v", err)
+	}
+
+	filteredA, err := repo.List(ctx, domain.EntryListFilter{BankAccountID: &accountA})
+	if err != nil {
+		t.Fatalf("list by account A: %v", err)
+	}
+	if len(filteredA) != 1 || filteredA[0].ID != entryA.ID {
+		t.Fatalf("unexpected account A filter result: %+v", filteredA)
+	}
+
+	if _, err := repo.Update(ctx, domain.EntryUpdateInput{
+		ID:             entryA.ID,
+		SetBankAccount: true,
+		BankAccountID:  nil,
+	}); err != nil {
+		t.Fatalf("clear bank account: %v", err)
+	}
+
+	filteredAfterClear, err := repo.List(ctx, domain.EntryListFilter{BankAccountID: &accountA})
+	if err != nil {
+		t.Fatalf("list by account A after clear: %v", err)
+	}
+	if len(filteredAfterClear) != 0 {
+		t.Fatalf("expected no entries for account A after clear, got %+v", filteredAfterClear)
+	}
+}
+
 func TestEntryRepoListReturnsDeterministicLabelsWithoutNPlusOneBehaviorChanges(t *testing.T) {
 	t.Parallel()
 
@@ -718,6 +786,27 @@ func insertLabelForEntryTest(t *testing.T, ctx context.Context, db *sql.DB, name
 	id, err := result.LastInsertId()
 	if err != nil {
 		t.Fatalf("read inserted label id: %v", err)
+	}
+
+	return id
+}
+
+func insertBankAccountForEntryTest(t *testing.T, ctx context.Context, db *sql.DB, alias, last4 string) int64 {
+	t.Helper()
+
+	result, err := db.ExecContext(
+		ctx,
+		`INSERT INTO bank_accounts (alias, last4, updated_at_utc) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));`,
+		alias,
+		last4,
+	)
+	if err != nil {
+		t.Fatalf("insert bank account: %v", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("read inserted bank account id: %v", err)
 	}
 
 	return id

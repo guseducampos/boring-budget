@@ -13,10 +13,13 @@ import (
 )
 
 type savingsAddFlags struct {
-	amount   string
-	currency string
-	dateRaw  string
-	note     string
+	amount                  string
+	currency                string
+	dateRaw                 string
+	sourceAccountIDRaw      string
+	destinationAccountIDRaw string
+	accountIDRaw            string
+	note                    string
 }
 
 type savingsShowFlags struct {
@@ -57,9 +60,9 @@ type savingsRangePayload struct {
 }
 
 type savingsShowPayload struct {
-	Scope          string                    `json:"scope"`
-	Lifetime       *savingsViewPayload       `json:"lifetime,omitempty"`
-	Range          *savingsRangePayload      `json:"range,omitempty"`
+	Scope          string                      `json:"scope"`
+	Lifetime       *savingsViewPayload         `json:"lifetime,omitempty"`
+	Range          *savingsRangePayload        `json:"range,omitempty"`
 	LinkedAccounts []domain.BalanceAccountLink `json:"linked_accounts"`
 }
 
@@ -117,7 +120,7 @@ func newSavingsTransferAddCmd(opts *RootOptions) *cobra.Command {
 				return printSavingsError(cmd, savingsOutputFormat(opts), err)
 			}
 
-			input, err := buildSavingsAddInput(cmd, flags)
+			input, err := buildSavingsAddInput(cmd, flags, true)
 			if err != nil {
 				return printSavingsError(cmd, savingsOutputFormat(opts), err)
 			}
@@ -136,6 +139,8 @@ func newSavingsTransferAddCmd(opts *RootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&flags.amount, "amount", "", "Amount in major units (e.g. 74.25)")
 	cmd.Flags().StringVar(&flags.currency, "currency", defaultEntryCurrency, "ISO currency code (e.g. USD)")
 	cmd.Flags().StringVar(&flags.dateRaw, "date", "", "Savings event date (RFC3339 or YYYY-MM-DD)")
+	cmd.Flags().StringVar(&flags.sourceAccountIDRaw, "source-account-id", "", "Optional source bank account ID")
+	cmd.Flags().StringVar(&flags.destinationAccountIDRaw, "destination-account-id", "", "Optional destination bank account ID")
 	cmd.Flags().StringVar(&flags.note, "note", "", "Optional note")
 
 	return cmd
@@ -161,7 +166,7 @@ func newSavingsEntryAddCmd(opts *RootOptions) *cobra.Command {
 				return printSavingsError(cmd, savingsOutputFormat(opts), err)
 			}
 
-			input, err := buildSavingsAddInput(cmd, flags)
+			input, err := buildSavingsAddInput(cmd, flags, false)
 			if err != nil {
 				return printSavingsError(cmd, savingsOutputFormat(opts), err)
 			}
@@ -180,6 +185,7 @@ func newSavingsEntryAddCmd(opts *RootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&flags.amount, "amount", "", "Amount in major units (e.g. 74.25)")
 	cmd.Flags().StringVar(&flags.currency, "currency", defaultEntryCurrency, "ISO currency code (e.g. USD)")
 	cmd.Flags().StringVar(&flags.dateRaw, "date", "", "Savings event date (RFC3339 or YYYY-MM-DD)")
+	cmd.Flags().StringVar(&flags.accountIDRaw, "account-id", "", "Optional savings bank account ID")
 	cmd.Flags().StringVar(&flags.note, "note", "", "Optional note")
 
 	return cmd
@@ -262,15 +268,20 @@ func newSavingsService(opts *RootOptions) (*service.SavingsService, error) {
 
 	entryRepo := sqlitestore.NewEntryRepo(opts.db)
 	savingsRepo := sqlitestore.NewSavingsRepo(opts.db)
+	bankAccountRepo := sqlitestore.NewBankAccountRepo(opts.db)
 
-	svc, err := service.NewSavingsService(entryRepo, savingsRepo)
+	svc, err := service.NewSavingsService(
+		entryRepo,
+		savingsRepo,
+		service.WithSavingsBalanceLinkReader(bankAccountRepo),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("savings service init: %w", err)
 	}
 	return svc, nil
 }
 
-func buildSavingsAddInput(cmd *cobra.Command, flags *savingsAddFlags) (service.SavingsAddInput, error) {
+func buildSavingsAddInput(cmd *cobra.Command, flags *savingsAddFlags, isTransfer bool) (service.SavingsAddInput, error) {
 	if flags == nil {
 		return service.SavingsAddInput{}, &savingsCLIError{
 			Code:    "INTERNAL_ERROR",
@@ -298,11 +309,38 @@ func buildSavingsAddInput(cmd *cobra.Command, flags *savingsAddFlags) (service.S
 		return service.SavingsAddInput{}, err
 	}
 
+	var sourceBankAccountID *int64
+	var destinationBankAccountID *int64
+	if isTransfer {
+		if cmd != nil && cmd.Flags().Changed("source-account-id") {
+			id, err := parsePositiveInt64(flags.sourceAccountIDRaw, "source-account-id")
+			if err != nil {
+				return service.SavingsAddInput{}, err
+			}
+			sourceBankAccountID = &id
+		}
+		if cmd != nil && cmd.Flags().Changed("destination-account-id") {
+			id, err := parsePositiveInt64(flags.destinationAccountIDRaw, "destination-account-id")
+			if err != nil {
+				return service.SavingsAddInput{}, err
+			}
+			destinationBankAccountID = &id
+		}
+	} else if cmd != nil && cmd.Flags().Changed("account-id") {
+		id, err := parsePositiveInt64(flags.accountIDRaw, "account-id")
+		if err != nil {
+			return service.SavingsAddInput{}, err
+		}
+		destinationBankAccountID = &id
+	}
+
 	return service.SavingsAddInput{
-		AmountMinor:  amountMinor,
-		CurrencyCode: flags.currency,
-		EventDateUTC: flags.dateRaw,
-		Note:         flags.note,
+		AmountMinor:              amountMinor,
+		CurrencyCode:             flags.currency,
+		EventDateUTC:             flags.dateRaw,
+		SourceBankAccountID:      sourceBankAccountID,
+		DestinationBankAccountID: destinationBankAccountID,
+		Note:                     flags.note,
 	}, nil
 }
 
@@ -431,8 +469,11 @@ func codeFromSavingsError(err error) string {
 		errors.Is(err, domain.ErrAmountOverflow),
 		errors.Is(err, domain.ErrInvalidAmountMinor),
 		errors.Is(err, domain.ErrInvalidTransactionDate),
+		errors.Is(err, domain.ErrInvalidBankAccountID),
 		errors.Is(err, domain.ErrInvalidSavingsEventType):
 		return "INVALID_ARGUMENT"
+	case errors.Is(err, domain.ErrBankAccountNotFound):
+		return "NOT_FOUND"
 	default:
 		msg := strings.ToLower(err.Error())
 		if strings.Contains(msg, "unique constraint") || strings.Contains(msg, "constraint failed") {
@@ -458,8 +499,12 @@ func messageFromSavingsError(err error) string {
 		return "amount must be greater than zero"
 	case errors.Is(err, domain.ErrInvalidTransactionDate):
 		return "date/from/to must be RFC3339 or YYYY-MM-DD"
+	case errors.Is(err, domain.ErrInvalidBankAccountID):
+		return "account id must be a positive integer"
 	case errors.Is(err, domain.ErrInvalidSavingsEventType):
 		return "event_type is invalid"
+	case errors.Is(err, domain.ErrBankAccountNotFound):
+		return "bank account not found"
 	default:
 		msg := strings.ToLower(err.Error())
 		if strings.Contains(msg, "unique constraint") || strings.Contains(msg, "constraint failed") {

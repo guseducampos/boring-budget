@@ -20,48 +20,52 @@ const (
 )
 
 type entryAddFlags struct {
-	entryType      string
-	amount         string
-	currency       string
-	dateRaw        string
-	categoryIDRaw  string
-	labelIDRaw     []string
-	note           string
-	paymentMethod  string
-	cardIDRaw      string
-	cardNickname   string
-	cardLookupText string
+	entryType        string
+	amount           string
+	currency         string
+	dateRaw          string
+	categoryIDRaw    string
+	bankAccountIDRaw string
+	labelIDRaw       []string
+	note             string
+	paymentMethod    string
+	cardIDRaw        string
+	cardNickname     string
+	cardLookupText   string
 }
 
 type entryListFlags struct {
-	entryType      string
-	categoryIDRaw  string
-	fromRaw        string
-	toRaw          string
-	noteContains   string
-	labelIDRaw     []string
-	labelMode      string
-	paymentMethod  string
-	cardIDRaw      string
-	cardNickname   string
-	cardLookupText string
+	entryType        string
+	categoryIDRaw    string
+	bankAccountIDRaw string
+	fromRaw          string
+	toRaw            string
+	noteContains     string
+	labelIDRaw       []string
+	labelMode        string
+	paymentMethod    string
+	cardIDRaw        string
+	cardNickname     string
+	cardLookupText   string
 }
 
 type entryUpdateFlags struct {
-	entryType      string
-	amount         string
-	currency       string
-	dateRaw        string
-	categoryIDRaw  string
-	clearCategory  bool
-	labelIDRaw     []string
-	clearLabels    bool
-	note           string
-	clearNote      bool
-	paymentMethod  string
-	cardIDRaw      string
-	cardNickname   string
-	cardLookupText string
+	entryType        string
+	amount           string
+	currency         string
+	dateRaw          string
+	categoryIDRaw    string
+	clearCategory    bool
+	bankAccountIDRaw string
+	clearBankAccount bool
+	labelIDRaw       []string
+	clearLabels      bool
+	note             string
+	clearNote        bool
+	paymentMethod    string
+	cardIDRaw        string
+	cardNickname     string
+	cardLookupText   string
 }
 
 type entryCLIError struct {
@@ -141,6 +145,8 @@ func newEntryUpdateCmd(opts *RootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&flags.currency, "currency", "", "Optional ISO currency code (e.g. USD)")
 	cmd.Flags().StringVar(&flags.dateRaw, "date", "", "Optional transaction date (RFC3339 or YYYY-MM-DD)")
 	cmd.Flags().StringVar(&flags.categoryIDRaw, "category-id", "", "Optional category ID to set")
+	cmd.Flags().StringVar(&flags.bankAccountIDRaw, "bank-account-id", "", "Optional bank account ID to set")
+	cmd.Flags().BoolVar(&flags.clearBankAccount, "clear-bank-account", false, "Clear bank account attribution")
 	cmd.Flags().BoolVar(&flags.clearCategory, "clear-category", false, "Clear category (make entry orphan)")
 	cmd.Flags().StringArrayVar(&flags.labelIDRaw, "label-id", nil, "Optional label IDs to replace current labels")
 	cmd.Flags().BoolVar(&flags.clearLabels, "clear-labels", false, "Clear all labels")
@@ -197,6 +203,7 @@ func newEntryAddCmd(opts *RootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&flags.currency, "currency", defaultEntryCurrency, "ISO currency code (e.g. USD)")
 	cmd.Flags().StringVar(&flags.dateRaw, "date", "", "Transaction date (RFC3339 or YYYY-MM-DD)")
 	cmd.Flags().StringVar(&flags.categoryIDRaw, "category-id", "", "Optional category ID")
+	cmd.Flags().StringVar(&flags.bankAccountIDRaw, "bank-account-id", "", "Optional bank account ID")
 	cmd.Flags().StringArrayVar(&flags.labelIDRaw, "label-id", nil, "Optional label ID (repeatable)")
 	cmd.Flags().StringVar(&flags.note, "note", "", "Optional note")
 	cmd.Flags().StringVar(&flags.paymentMethod, "payment-method", "", "Payment method: cash|card (expense only)")
@@ -247,6 +254,7 @@ func newEntryListCmd(opts *RootOptions) *cobra.Command {
 
 	cmd.Flags().StringVar(&flags.entryType, "type", "", "Filter by entry type: income|expense")
 	cmd.Flags().StringVar(&flags.categoryIDRaw, "category-id", "", "Filter by category ID")
+	cmd.Flags().StringVar(&flags.bankAccountIDRaw, "bank-account-id", "", "Filter by bank account ID")
 	cmd.Flags().StringVar(&flags.fromRaw, "from", "", "Filter start date (RFC3339 or YYYY-MM-DD)")
 	cmd.Flags().StringVar(&flags.toRaw, "to", "", "Filter end date (RFC3339 or YYYY-MM-DD)")
 	cmd.Flags().StringVar(&flags.noteContains, "note-contains", "", "Filter entries whose note contains this text (case-insensitive)")
@@ -306,6 +314,7 @@ func newEntryService(opts *RootOptions) (*service.EntryService, error) {
 	entryRepo := sqlitestore.NewEntryRepo(opts.db)
 	capRepo := sqlitestore.NewCapRepo(opts.db)
 	cardRepo := sqlitestore.NewCardRepo(opts.db)
+	bankAccountRepo := sqlitestore.NewBankAccountRepo(opts.db)
 	cardSvc, err := service.NewCardService(cardRepo)
 	if err != nil {
 		return nil, fmt.Errorf("card service init: %w", err)
@@ -315,6 +324,7 @@ func newEntryService(opts *RootOptions) (*service.EntryService, error) {
 		entryRepo,
 		service.WithEntryCapLookup(capRepo),
 		service.WithEntryCardResolver(cardSvc),
+		service.WithEntryBalanceLinkReader(bankAccountRepo),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("entry service init: %w", err)
@@ -379,6 +389,14 @@ func buildEntryAddInput(cmd *cobra.Command, flags *entryAddFlags) (domain.EntryA
 		}
 		categoryID = &id
 	}
+	var bankAccountID *int64
+	if cmd != nil && cmd.Flags().Changed("bank-account-id") {
+		id, err := parsePositiveInt64(flags.bankAccountIDRaw, "bank-account-id")
+		if err != nil {
+			return domain.EntryAddInput{}, err
+		}
+		bankAccountID = &id
+	}
 
 	amountMinor, err := domain.ParseMajorAmountToMinor(flags.amount, flags.currency)
 	if err != nil {
@@ -400,6 +418,7 @@ func buildEntryAddInput(cmd *cobra.Command, flags *entryAddFlags) (domain.EntryA
 		CurrencyCode:        flags.currency,
 		TransactionDateUTC:  flags.dateRaw,
 		CategoryID:          categoryID,
+		BankAccountID:       bankAccountID,
 		LabelIDs:            labelIDs,
 		Note:                flags.note,
 		PaymentMethod:       strings.TrimSpace(flags.paymentMethod),
@@ -423,6 +442,13 @@ func buildEntryUpdateInput(cmd *cobra.Command, id int64, flags *entryUpdateFlags
 			Code:    "INVALID_ARGUMENT",
 			Message: "clear-category cannot be used with category-id",
 			Details: map[string]any{"fields": []string{"clear-category", "category-id"}},
+		}
+	}
+	if cmd != nil && cmd.Flags().Changed("clear-bank-account") && cmd.Flags().Changed("bank-account-id") {
+		return domain.EntryUpdateInput{}, &entryCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "clear-bank-account cannot be used with bank-account-id",
+			Details: map[string]any{"fields": []string{"clear-bank-account", "bank-account-id"}},
 		}
 	}
 	if cmd != nil && cmd.Flags().Changed("clear-labels") && cmd.Flags().Changed("label-id") {
@@ -501,6 +527,20 @@ func buildEntryUpdateInput(cmd *cobra.Command, id int64, flags *entryUpdateFlags
 		input.SetCategory = true
 		input.CategoryID = &categoryID
 	}
+	if cmd != nil && cmd.Flags().Changed("clear-bank-account") {
+		changed = true
+		input.SetBankAccount = true
+		input.BankAccountID = nil
+	}
+	if cmd != nil && cmd.Flags().Changed("bank-account-id") {
+		changed = true
+		bankAccountID, err := parsePositiveInt64(flags.bankAccountIDRaw, "bank-account-id")
+		if err != nil {
+			return domain.EntryUpdateInput{}, err
+		}
+		input.SetBankAccount = true
+		input.BankAccountID = &bankAccountID
+	}
 	if cmd != nil && cmd.Flags().Changed("clear-labels") {
 		changed = true
 		input.SetLabelIDs = true
@@ -563,6 +603,7 @@ func buildEntryUpdateInput(cmd *cobra.Command, id int64, flags *entryUpdateFlags
 					"currency",
 					"date",
 					"category-id|clear-category",
+					"bank-account-id|clear-bank-account",
 					"label-id|clear-labels",
 					"note|clear-note",
 					"payment-method",
@@ -587,6 +628,14 @@ func buildEntryListFilter(flags *entryListFlags) (domain.EntryListFilter, error)
 			return domain.EntryListFilter{}, err
 		}
 		categoryID = &id
+	}
+	var bankAccountID *int64
+	if strings.TrimSpace(flags.bankAccountIDRaw) != "" {
+		id, err := parsePositiveInt64(flags.bankAccountIDRaw, "bank-account-id")
+		if err != nil {
+			return domain.EntryListFilter{}, err
+		}
+		bankAccountID = &id
 	}
 
 	labelIDs, err := parsePositiveInt64List(flags.labelIDRaw, "label-id")
@@ -623,6 +672,7 @@ func buildEntryListFilter(flags *entryListFlags) (domain.EntryListFilter, error)
 	return domain.EntryListFilter{
 		Type:                flags.entryType,
 		CategoryID:          categoryID,
+		BankAccountID:       bankAccountID,
 		DateFromUTC:         fromUTC,
 		DateToUTC:           toUTC,
 		NoteContains:        strings.TrimSpace(flags.noteContains),
@@ -746,6 +796,7 @@ func codeFromEntryError(err error) string {
 		errors.Is(err, domain.ErrInvalidEntryID),
 		errors.Is(err, domain.ErrNoEntryUpdateFields),
 		errors.Is(err, domain.ErrInvalidCategoryID),
+		errors.Is(err, domain.ErrInvalidBankAccountID),
 		errors.Is(err, domain.ErrInvalidLabelID),
 		errors.Is(err, domain.ErrInvalidLabelMode),
 		errors.Is(err, domain.ErrInvalidCardID),
@@ -757,6 +808,7 @@ func codeFromEntryError(err error) string {
 		errors.Is(err, domain.ErrPaymentNotAllowed):
 		return "INVALID_ARGUMENT"
 	case errors.Is(err, domain.ErrCategoryNotFound),
+		errors.Is(err, domain.ErrBankAccountNotFound),
 		errors.Is(err, domain.ErrLabelNotFound),
 		errors.Is(err, domain.ErrEntryNotFound),
 		errors.Is(err, domain.ErrCardNotFound):
@@ -796,6 +848,8 @@ func messageFromEntryError(err error) string {
 		return "at least one update field is required"
 	case errors.Is(err, domain.ErrInvalidCategoryID):
 		return "category-id must be a positive integer"
+	case errors.Is(err, domain.ErrInvalidBankAccountID):
+		return "bank-account-id must be a positive integer"
 	case errors.Is(err, domain.ErrInvalidLabelID):
 		return "label-id must be a positive integer"
 	case errors.Is(err, domain.ErrInvalidLabelMode):
@@ -816,6 +870,8 @@ func messageFromEntryError(err error) string {
 		return "payment method options are only valid for expense entries"
 	case errors.Is(err, domain.ErrCategoryNotFound):
 		return "category not found"
+	case errors.Is(err, domain.ErrBankAccountNotFound):
+		return "bank account not found"
 	case errors.Is(err, domain.ErrLabelNotFound):
 		return "label not found"
 	case errors.Is(err, domain.ErrEntryNotFound):

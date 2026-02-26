@@ -175,6 +175,108 @@ func TestSavingsCommandJSONStorageErrorMapsDBError(t *testing.T) {
 	}
 }
 
+func TestSavingsCommandJSONAppliesLinkedAccountDefaults(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	addGeneral := executeBankAccountCmdJSON(t, db, []string{
+		"add",
+		"--alias", "General Wallet",
+		"--last4", "1111",
+	})
+	generalID := int64(mustMap(t, mustMap(t, addGeneral["data"])["bank_account"])["id"].(float64))
+
+	addSavings := executeBankAccountCmdJSON(t, db, []string{
+		"add",
+		"--alias", "Savings Wallet",
+		"--last4", "2222",
+	})
+	savingsID := int64(mustMap(t, mustMap(t, addSavings["data"])["bank_account"])["id"].(float64))
+
+	mustEntrySuccess(t, executeBankAccountCmdJSON(t, db, []string{
+		"link", "set",
+		"--target", "general_balance",
+		"--account-id", int64ToString(generalID),
+	}))
+	mustEntrySuccess(t, executeBankAccountCmdJSON(t, db, []string{
+		"link", "set",
+		"--target", "savings",
+		"--account-id", int64ToString(savingsID),
+	}))
+
+	transfer := executeSavingsCmdJSON(t, db, []string{
+		"transfer", "add",
+		"--amount", "10.00",
+		"--currency", "USD",
+		"--date", "2026-02-01",
+	})
+	mustEntrySuccess(t, transfer)
+	transferEvent := mustMap(t, mustMap(t, transfer["data"])["event"])
+	if int64(transferEvent["source_bank_account_id"].(float64)) != generalID {
+		t.Fatalf("expected source_bank_account_id %d, got %v", generalID, transferEvent["source_bank_account_id"])
+	}
+	if int64(transferEvent["destination_bank_account_id"].(float64)) != savingsID {
+		t.Fatalf("expected destination_bank_account_id %d, got %v", savingsID, transferEvent["destination_bank_account_id"])
+	}
+
+	entryAdd := executeSavingsCmdJSON(t, db, []string{
+		"entry", "add",
+		"--amount", "3.00",
+		"--currency", "USD",
+		"--date", "2026-02-02",
+	})
+	mustEntrySuccess(t, entryAdd)
+	entryEvent := mustMap(t, mustMap(t, entryAdd["data"])["event"])
+	if _, ok := entryEvent["source_bank_account_id"]; ok {
+		t.Fatalf("expected no source_bank_account_id for independent_add, got %v", entryEvent["source_bank_account_id"])
+	}
+	if int64(entryEvent["destination_bank_account_id"].(float64)) != savingsID {
+		t.Fatalf("expected destination_bank_account_id %d, got %v", savingsID, entryEvent["destination_bank_account_id"])
+	}
+}
+
+func TestSavingsCommandJSONAllowsSameAccountForGeneralAndSavingsLinks(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	addUnified := executeBankAccountCmdJSON(t, db, []string{
+		"add",
+		"--alias", "Unified Wallet",
+		"--last4", "3333",
+	})
+	unifiedID := int64(mustMap(t, mustMap(t, addUnified["data"])["bank_account"])["id"].(float64))
+
+	mustEntrySuccess(t, executeBankAccountCmdJSON(t, db, []string{
+		"link", "set",
+		"--target", "general_balance",
+		"--account-id", int64ToString(unifiedID),
+	}))
+	mustEntrySuccess(t, executeBankAccountCmdJSON(t, db, []string{
+		"link", "set",
+		"--target", "savings",
+		"--account-id", int64ToString(unifiedID),
+	}))
+
+	transfer := executeSavingsCmdJSON(t, db, []string{
+		"transfer", "add",
+		"--amount", "12.00",
+		"--currency", "USD",
+		"--date", "2026-02-03",
+	})
+	mustEntrySuccess(t, transfer)
+	event := mustMap(t, mustMap(t, transfer["data"])["event"])
+	if int64(event["source_bank_account_id"].(float64)) != unifiedID {
+		t.Fatalf("expected source_bank_account_id %d, got %v", unifiedID, event["source_bank_account_id"])
+	}
+	if int64(event["destination_bank_account_id"].(float64)) != unifiedID {
+		t.Fatalf("expected destination_bank_account_id %d, got %v", unifiedID, event["destination_bank_account_id"])
+	}
+}
+
 func TestSavingsCommandHumanOutput(t *testing.T) {
 	t.Parallel()
 

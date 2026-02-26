@@ -29,6 +29,14 @@ func (s *savingsEventRepoStub) ListEvents(ctx context.Context, filter domain.Sav
 	return s.listFn(ctx, filter)
 }
 
+type savingsBalanceLinkReaderStub struct {
+	listFn func(ctx context.Context) ([]domain.BalanceAccountLink, error)
+}
+
+func (s *savingsBalanceLinkReaderStub) ListBalanceLinks(ctx context.Context) ([]domain.BalanceAccountLink, error) {
+	return s.listFn(ctx)
+}
+
 func TestNewSavingsServiceRequiresDependencies(t *testing.T) {
 	t.Parallel()
 
@@ -245,5 +253,66 @@ func TestSavingsServiceShowOrdersReplayByDateThenID(t *testing.T) {
 	}
 	if !reflect.DeepEqual(result.Lifetime.ByCurrency, expected) {
 		t.Fatalf("unexpected replay ordering result: %+v", result.Lifetime.ByCurrency)
+	}
+}
+
+func TestSavingsServiceAddTransferDefaultsAccountsFromLinks(t *testing.T) {
+	t.Parallel()
+
+	var captured domain.SavingsEventAddInput
+	generalID := int64(11)
+	savingsID := int64(22)
+
+	svc, err := NewSavingsService(
+		&savingsEntryReaderStub{
+			listFn: func(ctx context.Context, filter domain.EntryListFilter) ([]domain.Entry, error) {
+				return nil, nil
+			},
+		},
+		&savingsEventRepoStub{
+			addFn: func(ctx context.Context, input domain.SavingsEventAddInput) (domain.SavingsEvent, error) {
+				captured = input
+				return domain.SavingsEvent{ID: 1, EventType: input.EventType}, nil
+			},
+			listFn: func(ctx context.Context, filter domain.SavingsEventListFilter) ([]domain.SavingsEvent, error) {
+				return nil, nil
+			},
+		},
+		WithSavingsBalanceLinkReader(&savingsBalanceLinkReaderStub{
+			listFn: func(ctx context.Context) ([]domain.BalanceAccountLink, error) {
+				return []domain.BalanceAccountLink{
+					{
+						Target: domain.BalanceLinkTargetGeneral,
+						BankAccount: &domain.BankAccount{
+							ID: generalID,
+						},
+					},
+					{
+						Target: domain.BalanceLinkTargetSavings,
+						BankAccount: &domain.BankAccount{
+							ID: savingsID,
+						},
+					},
+				}, nil
+			},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("new savings service: %v", err)
+	}
+
+	if _, err := svc.AddTransfer(context.Background(), SavingsAddInput{
+		AmountMinor:  1000,
+		CurrencyCode: "USD",
+		EventDateUTC: "2026-02-01",
+	}); err != nil {
+		t.Fatalf("add transfer: %v", err)
+	}
+
+	if captured.SourceBankAccountID == nil || *captured.SourceBankAccountID != generalID {
+		t.Fatalf("expected source bank account %d, got %v", generalID, captured.SourceBankAccountID)
+	}
+	if captured.DestinationBankAccountID == nil || *captured.DestinationBankAccountID != savingsID {
+		t.Fatalf("expected destination bank account %d, got %v", savingsID, captured.DestinationBankAccountID)
 	}
 }

@@ -47,6 +47,7 @@ type Entry struct {
 	CurrencyCode        string  `json:"currency_code"`
 	TransactionDateUTC  string  `json:"transaction_date_utc"`
 	CategoryID          *int64  `json:"category_id,omitempty"`
+	BankAccountID       *int64  `json:"bank_account_id,omitempty"`
 	LabelIDs            []int64 `json:"label_ids,omitempty"`
 	Note                string  `json:"note,omitempty"`
 	PaymentMethod       string  `json:"payment_method,omitempty"`
@@ -63,6 +64,7 @@ type EntryAddInput struct {
 	CurrencyCode        string
 	TransactionDateUTC  string
 	CategoryID          *int64
+	BankAccountID       *int64
 	LabelIDs            []int64
 	Note                string
 	PaymentMethod       string
@@ -79,6 +81,8 @@ type EntryUpdateInput struct {
 	TransactionDateUTC  *string
 	SetCategory         bool
 	CategoryID          *int64
+	SetBankAccount      bool
+	BankAccountID       *int64
 	SetLabelIDs         bool
 	LabelIDs            []int64
 	SetNote             bool
@@ -94,6 +98,7 @@ type EntryUpdateInput struct {
 type EntryListFilter struct {
 	Type                string
 	CategoryID          *int64
+	BankAccountID       *int64
 	DateFromUTC         string
 	DateToUTC           string
 	NoteContains        string
@@ -124,6 +129,7 @@ func HasEntryUpdateChanges(input EntryUpdateInput) bool {
 		input.CurrencyCode != nil ||
 		input.TransactionDateUTC != nil ||
 		input.SetCategory ||
+		input.SetBankAccount ||
 		input.SetLabelIDs ||
 		input.SetNote ||
 		input.SetPaymentMethod ||

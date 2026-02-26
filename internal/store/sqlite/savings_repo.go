@@ -31,13 +31,27 @@ func (r *SavingsRepo) AddEvent(ctx context.Context, input domain.SavingsEventAdd
 	if strings.TrimSpace(input.Note) != "" {
 		note = sql.NullString{String: strings.TrimSpace(input.Note), Valid: true}
 	}
+	sourceBankAccountID := nullableInt64(input.SourceBankAccountID)
+	if sourceBankAccountID.Valid {
+		if err := r.validateActiveBankAccount(ctx, sourceBankAccountID.Int64); err != nil {
+			return domain.SavingsEvent{}, err
+		}
+	}
+	destinationBankAccountID := nullableInt64(input.DestinationBankAccountID)
+	if destinationBankAccountID.Valid {
+		if err := r.validateActiveBankAccount(ctx, destinationBankAccountID.Int64); err != nil {
+			return domain.SavingsEvent{}, err
+		}
+	}
 
 	result, err := r.queries.CreateSavingsEvent(ctx, queries.CreateSavingsEventParams{
-		EventType:    input.EventType,
-		AmountMinor:  input.AmountMinor,
-		CurrencyCode: input.CurrencyCode,
-		EventDateUtc: input.EventDateUTC,
-		Note:         note,
+		EventType:                input.EventType,
+		AmountMinor:              input.AmountMinor,
+		CurrencyCode:             input.CurrencyCode,
+		EventDateUtc:             input.EventDateUTC,
+		SourceBankAccountID:      sourceBankAccountID,
+		DestinationBankAccountID: destinationBankAccountID,
+		Note:                     note,
 	})
 	if err != nil {
 		return domain.SavingsEvent{}, fmt.Errorf("add savings event: %w", err)
@@ -89,12 +103,14 @@ func (r *SavingsRepo) ListEvents(ctx context.Context, filter domain.SavingsEvent
 
 func mapSQLCSavingsEventToDomain(row queries.SavingsEvent) domain.SavingsEvent {
 	event := domain.SavingsEvent{
-		ID:           row.ID,
-		EventType:    row.EventType,
-		AmountMinor:  row.AmountMinor,
-		CurrencyCode: row.CurrencyCode,
-		EventDateUTC: row.EventDateUtc,
-		CreatedAtUTC: row.CreatedAtUtc,
+		ID:                       row.ID,
+		EventType:                row.EventType,
+		AmountMinor:              row.AmountMinor,
+		CurrencyCode:             row.CurrencyCode,
+		EventDateUTC:             row.EventDateUtc,
+		SourceBankAccountID:      ptrInt64FromNull(row.SourceBankAccountID),
+		DestinationBankAccountID: ptrInt64FromNull(row.DestinationBankAccountID),
+		CreatedAtUTC:             row.CreatedAtUtc,
 	}
 
 	if row.Note.Valid {
@@ -102,4 +118,15 @@ func mapSQLCSavingsEventToDomain(row queries.SavingsEvent) domain.SavingsEvent {
 	}
 
 	return event
+}
+
+func (r *SavingsRepo) validateActiveBankAccount(ctx context.Context, bankAccountID int64) error {
+	exists, err := r.queries.ExistsActiveBankAccountByID(ctx, bankAccountID)
+	if err != nil {
+		return fmt.Errorf("validate bank account: %w", err)
+	}
+	if !isTruthy(exists) {
+		return domain.ErrBankAccountNotFound
+	}
+	return nil
 }

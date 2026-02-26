@@ -61,6 +61,17 @@ func (r *EntryRepo) Add(ctx context.Context, input domain.EntryAddInput) (domain
 		}
 		categoryID = sql.NullInt64{Int64: *input.CategoryID, Valid: true}
 	}
+	bankAccountID := sql.NullInt64{}
+	if input.BankAccountID != nil {
+		isActive, err := qtx.ExistsActiveBankAccountByID(ctx, *input.BankAccountID)
+		if err != nil {
+			return domain.Entry{}, fmt.Errorf("add entry check bank account: %w", err)
+		}
+		if !isTruthy(isActive) {
+			return domain.Entry{}, domain.ErrBankAccountNotFound
+		}
+		bankAccountID = sql.NullInt64{Int64: *input.BankAccountID, Valid: true}
+	}
 
 	note := sql.NullString{}
 	if strings.TrimSpace(input.Note) != "" {
@@ -73,6 +84,7 @@ func (r *EntryRepo) Add(ctx context.Context, input domain.EntryAddInput) (domain
 		CurrencyCode:       input.CurrencyCode,
 		TransactionDateUtc: input.TransactionDateUTC,
 		CategoryID:         categoryID,
+		BankAccountID:      bankAccountID,
 		Note:               note,
 	})
 	if err != nil {
@@ -164,6 +176,25 @@ func (r *EntryRepo) Update(ctx context.Context, input domain.EntryUpdateInput) (
 			categoryID = sql.NullInt64{Int64: *input.CategoryID, Valid: true}
 		}
 	}
+	bankAccountID := current.BankAccountID
+	clearBankAccount := int64(0)
+	setBankAccountID := int64(0)
+	if input.SetBankAccount {
+		if input.BankAccountID == nil {
+			clearBankAccount = 1
+			bankAccountID = sql.NullInt64{}
+		} else {
+			isActive, err := qtx.ExistsActiveBankAccountByID(ctx, *input.BankAccountID)
+			if err != nil {
+				return domain.Entry{}, fmt.Errorf("update entry check bank account: %w", err)
+			}
+			if !isTruthy(isActive) {
+				return domain.Entry{}, domain.ErrBankAccountNotFound
+			}
+			setBankAccountID = 1
+			bankAccountID = sql.NullInt64{Int64: *input.BankAccountID, Valid: true}
+		}
+	}
 
 	setType := int64(0)
 	entryType := current.Type
@@ -219,6 +250,9 @@ func (r *EntryRepo) Update(ctx context.Context, input domain.EntryUpdateInput) (
 		ClearCategory:         clearCategory,
 		SetCategoryID:         setCategoryID,
 		CategoryID:            categoryID,
+		ClearBankAccount:      clearBankAccount,
+		SetBankAccountID:      setBankAccountID,
+		BankAccountID:         bankAccountID,
 		ClearNote:             clearNote,
 		SetNote:               setNote,
 		Note:                  note,
@@ -325,11 +359,12 @@ func (r *EntryRepo) List(ctx context.Context, filter domain.EntryListFilter) ([]
 	}
 
 	params := queries.ListActiveEntriesParams{
-		EntryType:    nullableString(filter.Type),
-		CategoryID:   nullableInt64(filter.CategoryID),
-		DateFromUtc:  nullableString(filter.DateFromUTC),
-		DateToUtc:    nullableString(filter.DateToUTC),
-		NoteContains: nullableString(filter.NoteContains),
+		EntryType:     nullableString(filter.Type),
+		CategoryID:    nullableInt64(filter.CategoryID),
+		BankAccountID: nullableInt64(filter.BankAccountID),
+		DateFromUtc:   nullableString(filter.DateFromUTC),
+		DateToUtc:     nullableString(filter.DateToUTC),
+		NoteContains:  nullableString(filter.NoteContains),
 	}
 	rows, err := r.queries.ListActiveEntries(ctx, params)
 	if err != nil {
@@ -337,11 +372,12 @@ func (r *EntryRepo) List(ctx context.Context, filter domain.EntryListFilter) ([]
 	}
 
 	labelRows, err := r.queries.ListActiveEntryLabelIDsForListFilter(ctx, queries.ListActiveEntryLabelIDsForListFilterParams{
-		EntryType:    params.EntryType,
-		CategoryID:   params.CategoryID,
-		DateFromUtc:  params.DateFromUtc,
-		DateToUtc:    params.DateToUtc,
-		NoteContains: params.NoteContains,
+		EntryType:     params.EntryType,
+		CategoryID:    params.CategoryID,
+		BankAccountID: params.BankAccountID,
+		DateFromUtc:   params.DateFromUtc,
+		DateToUtc:     params.DateToUtc,
+		NoteContains:  params.NoteContains,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list entry labels: %w", err)
@@ -494,6 +530,7 @@ func mapSQLCTransactionToDomainEntry(row queries.Transaction, labelIDs []int64, 
 		CurrencyCode:       row.CurrencyCode,
 		TransactionDateUTC: row.TransactionDateUtc,
 		CategoryID:         categoryID,
+		BankAccountID:      ptrInt64FromNull(row.BankAccountID),
 		LabelIDs:           labelIDs,
 		Note:               note,
 		CreatedAtUTC:       row.CreatedAtUtc,

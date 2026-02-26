@@ -63,6 +63,13 @@ func ValidateBankAccountID(id int64) error {
 	return nil
 }
 
+func ValidateOptionalBankAccountID(id *int64) error {
+	if id == nil {
+		return nil
+	}
+	return ValidateBankAccountID(*id)
+}
+
 func NormalizeBankAccountAlias(alias string) (string, error) {
 	normalized := strings.TrimSpace(alias)
 	if normalized == "" {

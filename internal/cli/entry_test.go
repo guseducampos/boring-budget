@@ -494,6 +494,89 @@ func TestEntryCommandJSONPaymentMethodAndCardFilters(t *testing.T) {
 	}
 }
 
+func TestEntryCommandJSONBankAccountAttributionAndFiltering(t *testing.T) {
+	t.Parallel()
+
+	db := newCLITestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	addA := executeBankAccountCmdJSON(t, db, []string{
+		"add",
+		"--alias", "Wallet A",
+		"--last4", "1111",
+	})
+	accountAID := int64(mustMap(t, mustMap(t, addA["data"])["bank_account"])["id"].(float64))
+
+	addB := executeBankAccountCmdJSON(t, db, []string{
+		"add",
+		"--alias", "Wallet B",
+		"--last4", "2222",
+	})
+	accountBID := int64(mustMap(t, mustMap(t, addB["data"])["bank_account"])["id"].(float64))
+
+	mustEntrySuccess(t, executeBankAccountCmdJSON(t, db, []string{
+		"link", "set",
+		"--target", "general_balance",
+		"--account-id", strconv.FormatInt(accountBID, 10),
+	}))
+
+	explicit := executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "expense",
+		"--amount", "10.00",
+		"--currency", "USD",
+		"--date", "2026-02-01",
+		"--bank-account-id", strconv.FormatInt(accountAID, 10),
+	})
+	mustEntrySuccess(t, explicit)
+	explicitEntry := mustMap(t, mustMap(t, explicit["data"])["entry"])
+	if int64(explicitEntry["bank_account_id"].(float64)) != accountAID {
+		t.Fatalf("expected explicit bank_account_id %d, got %v", accountAID, explicitEntry["bank_account_id"])
+	}
+	explicitID := int64(explicitEntry["id"].(float64))
+
+	defaultLinked := executeEntryCmdJSON(t, db, []string{
+		"add",
+		"--type", "expense",
+		"--amount", "5.00",
+		"--currency", "USD",
+		"--date", "2026-02-02",
+	})
+	mustEntrySuccess(t, defaultLinked)
+	defaultEntry := mustMap(t, mustMap(t, defaultLinked["data"])["entry"])
+	if int64(defaultEntry["bank_account_id"].(float64)) != accountBID {
+		t.Fatalf("expected default linked bank_account_id %d, got %v", accountBID, defaultEntry["bank_account_id"])
+	}
+
+	filterA := executeEntryCmdJSON(t, db, []string{"list", "--bank-account-id", strconv.FormatInt(accountAID, 10)})
+	filterAData := mustMap(t, filterA["data"])
+	if int(filterAData["count"].(float64)) != 1 {
+		t.Fatalf("expected one entry for account A, got %v", filterAData["count"])
+	}
+
+	filterB := executeEntryCmdJSON(t, db, []string{"list", "--bank-account-id", strconv.FormatInt(accountBID, 10)})
+	filterBData := mustMap(t, filterB["data"])
+	if int(filterBData["count"].(float64)) != 1 {
+		t.Fatalf("expected one entry for account B, got %v", filterBData["count"])
+	}
+
+	updated := executeEntryCmdJSON(t, db, []string{
+		"update", strconv.FormatInt(explicitID, 10),
+		"--clear-bank-account",
+	})
+	mustEntrySuccess(t, updated)
+	updatedEntry := mustMap(t, mustMap(t, updated["data"])["entry"])
+	if _, ok := updatedEntry["bank_account_id"]; ok {
+		t.Fatalf("expected bank_account_id omitted after clear, got %v", updatedEntry["bank_account_id"])
+	}
+
+	filterAAfterClear := executeEntryCmdJSON(t, db, []string{"list", "--bank-account-id", strconv.FormatInt(accountAID, 10)})
+	filterAAfterClearData := mustMap(t, filterAAfterClear["data"])
+	if int(filterAAfterClearData["count"].(float64)) != 0 {
+		t.Fatalf("expected no entries for account A after clear, got %v", filterAAfterClearData["count"])
+	}
+}
+
 func TestEntryCommandJSONUpdateRequiresFields(t *testing.T) {
 	t.Parallel()
 

@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"boring-budget/internal/cli/output"
 	"boring-budget/internal/domain"
@@ -128,7 +129,7 @@ func newBankAccountBalanceShowCmd(opts *RootOptions) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "show",
-		Short: "Show per-account balances from linked general/savings balances",
+		Short: "Show per-account balances from attributed entries and savings events",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				return printBankAccountError(cmd, opts.Output, &bankAccountCLIError{
@@ -147,10 +148,8 @@ func newBankAccountBalanceShowCmd(opts *RootOptions) *cobra.Command {
 			if err != nil {
 				return printBankAccountError(cmd, opts.Output, err)
 			}
-			savingsSvc, err := newSavingsService(opts)
-			if err != nil {
-				return printBankAccountError(cmd, opts.Output, err)
-			}
+			entryRepo := sqlitestore.NewEntryRepo(opts.db)
+			savingsRepo := sqlitestore.NewSavingsRepo(opts.db)
 
 			accounts, err := bankSvc.List(cmd.Context(), domain.BankAccountListFilter{IncludeDeleted: false})
 			if err != nil {
@@ -161,30 +160,50 @@ func newBankAccountBalanceShowCmd(opts *RootOptions) *cobra.Command {
 				return printBankAccountError(cmd, opts.Output, err)
 			}
 
-			savingsViews, err := savingsSvc.Show(cmd.Context(), service.SavingsShowRequest{
-				IncludeLifetime: req.IncludeLifetime,
-				IncludeRange:    req.IncludeRange,
-				RangeFromUTC:    req.FromUTC,
-				RangeToUTC:      req.ToUTC,
-			})
-			if err != nil {
-				return printBankAccountError(cmd, opts.Output, err)
-			}
-
 			payload := bankAccountBalancePayload{
 				Scope: req.Scope,
 				Links: links,
 			}
-			if req.IncludeLifetime && savingsViews.Lifetime != nil {
+			if req.IncludeLifetime {
+				lifetimeEntries, err := entryRepo.List(cmd.Context(), domain.EntryListFilter{})
+				if err != nil {
+					return printBankAccountError(cmd, opts.Output, err)
+				}
+				lifetimeEvents, err := savingsRepo.ListEvents(cmd.Context(), domain.SavingsEventListFilter{})
+				if err != nil {
+					return printBankAccountError(cmd, opts.Output, err)
+				}
+				balances, err := buildAttributedAccountBalances(accounts, links, lifetimeEntries, lifetimeEvents)
+				if err != nil {
+					return printBankAccountError(cmd, opts.Output, err)
+				}
 				payload.Lifetime = &bankAccountBalanceView{
-					Accounts: buildAccountBalances(accounts, links, savingsViews.Lifetime.ByCurrency),
+					Accounts: balances,
 				}
 			}
-			if req.IncludeRange && savingsViews.Range != nil {
+			if req.IncludeRange {
+				rangeEntries, err := entryRepo.List(cmd.Context(), domain.EntryListFilter{
+					DateFromUTC: req.FromUTC,
+					DateToUTC:   req.ToUTC,
+				})
+				if err != nil {
+					return printBankAccountError(cmd, opts.Output, err)
+				}
+				rangeEvents, err := savingsRepo.ListEvents(cmd.Context(), domain.SavingsEventListFilter{
+					DateFromUTC: req.FromUTC,
+					DateToUTC:   req.ToUTC,
+				})
+				if err != nil {
+					return printBankAccountError(cmd, opts.Output, err)
+				}
+				balances, err := buildAttributedAccountBalances(accounts, links, rangeEntries, rangeEvents)
+				if err != nil {
+					return printBankAccountError(cmd, opts.Output, err)
+				}
 				payload.Range = &bankAccountBalanceRangeView{
 					FromUTC:  req.FromUTC,
 					ToUTC:    req.ToUTC,
-					Accounts: buildAccountBalances(accounts, links, savingsViews.Range.ByCurrency),
+					Accounts: balances,
 				}
 			}
 
@@ -678,39 +697,91 @@ func buildBankAccountBalanceShowRequest(flags *bankAccountBalanceShowFlags) (ban
 	return req, nil
 }
 
-func buildAccountBalances(accounts []domain.BankAccount, links []domain.BalanceAccountLink, totals []domain.SavingsCurrencyBalance) []bankAccountBalanceAccount {
-	generalAccountID, savingsAccountID := linkedAccountIDs(links)
+type bankAccountReplayKind int
 
-	type bucket struct {
-		general int64
-		savings int64
-		total   int64
+const (
+	bankAccountReplayKindEntry bankAccountReplayKind = iota
+	bankAccountReplayKindEvent
+)
+
+type bankAccountReplayItem struct {
+	kind                     bankAccountReplayKind
+	id                       int64
+	date                     int64
+	currencyCode             string
+	amountMinor              int64
+	entryType                string
+	entryBankAccountID       *int64
+	eventType                string
+	eventSourceBankAccountID *int64
+	eventTargetBankAccountID *int64
+}
+
+type bankAccountBalanceState struct {
+	general int64
+	savings int64
+}
+
+type bankAccountCurrencyBucket struct {
+	general int64
+	savings int64
+}
+
+func buildAttributedAccountBalances(accounts []domain.BankAccount, links []domain.BalanceAccountLink, entries []domain.Entry, events []domain.SavingsEvent) ([]bankAccountBalanceAccount, error) {
+	replayItems, err := buildBankAccountReplay(entries, events)
+	if err != nil {
+		return nil, err
 	}
-	byAccount := map[int64]map[string]bucket{}
+
+	generalLinkedAccountID, savingsLinkedAccountID := linkedAccountIDs(links)
+	accountBuckets := make(map[int64]map[string]bankAccountCurrencyBucket, len(accounts))
 	for _, account := range accounts {
-		byAccount[account.ID] = map[string]bucket{}
+		accountBuckets[account.ID] = map[string]bankAccountCurrencyBucket{}
 	}
+	stateByCurrency := map[string]bankAccountBalanceState{}
 
-	for _, row := range totals {
-		if generalAccountID != nil {
-			entries := byAccount[*generalAccountID]
-			b := entries[row.CurrencyCode]
-			b.general += row.GeneralBalanceMinor
-			b.total += row.GeneralBalanceMinor
-			entries[row.CurrencyCode] = b
+	for _, item := range replayItems {
+		state := stateByCurrency[item.currencyCode]
+
+		switch item.kind {
+		case bankAccountReplayKindEntry:
+			switch item.entryType {
+			case domain.EntryTypeIncome:
+				state.general += item.amountMinor
+				accountID := resolveAccountID(item.entryBankAccountID, generalLinkedAccountID)
+				applyAccountBalanceDelta(accountBuckets, accountID, item.currencyCode, item.amountMinor, 0)
+			case domain.EntryTypeExpense:
+				generalUsed, savingsUsed, deficit := consumeExpenseFromBalances(&state, item.amountMinor)
+				generalAccountID := resolveAccountID(item.entryBankAccountID, generalLinkedAccountID)
+				savingsAccountID := savingsLinkedAccountID
+				if savingsAccountID == nil {
+					savingsAccountID = generalAccountID
+				}
+				applyAccountBalanceDelta(accountBuckets, generalAccountID, item.currencyCode, -generalUsed-deficit, 0)
+				applyAccountBalanceDelta(accountBuckets, savingsAccountID, item.currencyCode, 0, -savingsUsed)
+			}
+		case bankAccountReplayKindEvent:
+			switch item.eventType {
+			case domain.SavingsEventTypeTransferToSavings:
+				state.general -= item.amountMinor
+				state.savings += item.amountMinor
+				sourceID := resolveAccountID(item.eventSourceBankAccountID, generalLinkedAccountID)
+				targetID := resolveAccountID(item.eventTargetBankAccountID, savingsLinkedAccountID)
+				applyAccountBalanceDelta(accountBuckets, sourceID, item.currencyCode, -item.amountMinor, 0)
+				applyAccountBalanceDelta(accountBuckets, targetID, item.currencyCode, 0, item.amountMinor)
+			case domain.SavingsEventTypeIndependentAdd:
+				state.savings += item.amountMinor
+				targetID := resolveAccountID(item.eventTargetBankAccountID, savingsLinkedAccountID)
+				applyAccountBalanceDelta(accountBuckets, targetID, item.currencyCode, 0, item.amountMinor)
+			}
 		}
-		if savingsAccountID != nil {
-			entries := byAccount[*savingsAccountID]
-			b := entries[row.CurrencyCode]
-			b.savings += row.SavingsBalanceMinor
-			b.total += row.SavingsBalanceMinor
-			entries[row.CurrencyCode] = b
-		}
+
+		stateByCurrency[item.currencyCode] = state
 	}
 
 	out := make([]bankAccountBalanceAccount, 0, len(accounts))
 	for _, account := range accounts {
-		currencyMap := byAccount[account.ID]
+		currencyMap := accountBuckets[account.ID]
 		currencies := make([]string, 0, len(currencyMap))
 		for code := range currencyMap {
 			currencies = append(currencies, code)
@@ -719,12 +790,12 @@ func buildAccountBalances(accounts []domain.BankAccount, links []domain.BalanceA
 
 		rows := make([]bankAccountCurrencyBalance, 0, len(currencies))
 		for _, code := range currencies {
-			b := currencyMap[code]
+			bucket := currencyMap[code]
 			rows = append(rows, bankAccountCurrencyBalance{
 				CurrencyCode:        code,
-				GeneralBalanceMinor: b.general,
-				SavingsBalanceMinor: b.savings,
-				TotalBalanceMinor:   b.total,
+				GeneralBalanceMinor: bucket.general,
+				SavingsBalanceMinor: bucket.savings,
+				TotalBalanceMinor:   bucket.general + bucket.savings,
 			})
 		}
 
@@ -736,7 +807,122 @@ func buildAccountBalances(accounts []domain.BankAccount, links []domain.BalanceA
 		})
 	}
 
-	return out
+	return out, nil
+}
+
+func buildBankAccountReplay(entries []domain.Entry, events []domain.SavingsEvent) ([]bankAccountReplayItem, error) {
+	items := make([]bankAccountReplayItem, 0, len(entries)+len(events))
+	for _, entry := range entries {
+		dateValue, err := parseBankAccountBalanceDate(entry.TransactionDateUTC)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, bankAccountReplayItem{
+			kind:               bankAccountReplayKindEntry,
+			id:                 entry.ID,
+			date:               dateValue,
+			currencyCode:       entry.CurrencyCode,
+			amountMinor:        entry.AmountMinor,
+			entryType:          entry.Type,
+			entryBankAccountID: entry.BankAccountID,
+		})
+	}
+	for _, event := range events {
+		dateValue, err := parseBankAccountBalanceDate(event.EventDateUTC)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, bankAccountReplayItem{
+			kind:                     bankAccountReplayKindEvent,
+			id:                       event.ID,
+			date:                     dateValue,
+			currencyCode:             event.CurrencyCode,
+			amountMinor:              event.AmountMinor,
+			eventType:                event.EventType,
+			eventSourceBankAccountID: event.SourceBankAccountID,
+			eventTargetBankAccountID: event.DestinationBankAccountID,
+		})
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].date != items[j].date {
+			return items[i].date < items[j].date
+		}
+		if items[i].id != items[j].id {
+			return items[i].id < items[j].id
+		}
+		return items[i].kind < items[j].kind
+	})
+
+	return items, nil
+}
+
+func parseBankAccountBalanceDate(value string) (int64, error) {
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+		parsed, err := time.Parse(layout, value)
+		if err == nil {
+			return parsed.UTC().UnixNano(), nil
+		}
+	}
+	return 0, domain.ErrInvalidTransactionDate
+}
+
+func consumeExpenseFromBalances(state *bankAccountBalanceState, amountMinor int64) (int64, int64, int64) {
+	if state == nil || amountMinor <= 0 {
+		return 0, 0, 0
+	}
+
+	generalAvailable := state.general
+	if generalAvailable < 0 {
+		generalAvailable = 0
+	}
+	generalUsed := minInt64(amountMinor, generalAvailable)
+
+	remaining := amountMinor - generalUsed
+	savingsAvailable := state.savings
+	if savingsAvailable < 0 {
+		savingsAvailable = 0
+	}
+	savingsUsed := minInt64(remaining, savingsAvailable)
+
+	deficit := remaining - savingsUsed
+	state.general = state.general - generalUsed - deficit
+	state.savings = state.savings - savingsUsed
+
+	return generalUsed, savingsUsed, deficit
+}
+
+func applyAccountBalanceDelta(accountBuckets map[int64]map[string]bankAccountCurrencyBucket, accountID *int64, currencyCode string, generalDelta, savingsDelta int64) {
+	if accountID == nil {
+		return
+	}
+	bucketsByCurrency, ok := accountBuckets[*accountID]
+	if !ok {
+		return
+	}
+	bucket := bucketsByCurrency[currencyCode]
+	bucket.general += generalDelta
+	bucket.savings += savingsDelta
+	bucketsByCurrency[currencyCode] = bucket
+}
+
+func resolveAccountID(primary, fallback *int64) *int64 {
+	if primary != nil {
+		value := *primary
+		return &value
+	}
+	if fallback != nil {
+		value := *fallback
+		return &value
+	}
+	return nil
+}
+
+func minInt64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func linkedAccountIDs(links []domain.BalanceAccountLink) (*int64, *int64) {
