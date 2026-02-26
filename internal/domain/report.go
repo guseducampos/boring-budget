@@ -133,6 +133,9 @@ type Report struct {
 	Earnings       ReportSection         `json:"earnings"`
 	Spending       ReportSection         `json:"spending"`
 	Net            ReportNet             `json:"net"`
+	PeriodBalance  ReportNet             `json:"period_balance"`
+	MonthlyBalance *ReportNet            `json:"monthly_balance,omitempty"`
+	GeneralBalance ReportNet             `json:"general_balance"`
 	PaymentMethods *ReportPaymentMethods `json:"payment_methods,omitempty"`
 	Converted      *ConvertedSummary     `json:"converted,omitempty"`
 	CapStatus      []ReportCapStatus     `json:"cap_status"`

@@ -5,11 +5,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
 
 	"boring-budget/internal/cli/output"
+	"boring-budget/internal/domain"
 )
 
 func TestReportCommandJSONScopesAndFilters(t *testing.T) {
@@ -126,11 +128,11 @@ func TestReportCommandJSONScopesAndFilters(t *testing.T) {
 		t.Fatalf("expected one cap status item, got %d (%v)", len(capStatus), capStatus)
 	}
 	firstCapStatus := mustMap(t, capStatus[0])
-	if int64(firstCapStatus["spend_total_minor"].(float64)) != 2000 {
-		t.Fatalf("expected spend_total_minor 2000, got %v", firstCapStatus["spend_total_minor"])
+	if got := reportAmountForItem(t, firstCapStatus, "spend_total"); got != 2000 {
+		t.Fatalf("expected spend_total 2000, got %d", got)
 	}
-	if int64(firstCapStatus["overspend_minor"].(float64)) != 300 {
-		t.Fatalf("expected overspend_minor 300, got %v", firstCapStatus["overspend_minor"])
+	if got := reportAmountForItem(t, firstCapStatus, "overspend"); got != 300 {
+		t.Fatalf("expected overspend 300, got %d", got)
 	}
 
 	capChanges := mustAnySlice(t, monthlyData["cap_changes"])
@@ -251,8 +253,8 @@ func TestReportCommandJSONIncludesPaymentMethodSummaryAndLiability(t *testing.T)
 	if int64(liabilityItem["card_id"].(float64)) != creditCardID {
 		t.Fatalf("expected liability card_id=%d, got %v", creditCardID, liabilityItem["card_id"])
 	}
-	if int64(liabilityItem["balance_minor_signed"].(float64)) != 2000 {
-		t.Fatalf("expected liability balance_minor_signed=2000, got %v", liabilityItem["balance_minor_signed"])
+	if got := reportAmountForItem(t, liabilityItem, "balance"); got != 2000 {
+		t.Fatalf("expected liability balance=2000, got %d", got)
 	}
 	if liabilityItem["state"].(string) != "owes" {
 		t.Fatalf("expected liability state owes, got %v", liabilityItem["state"])
@@ -370,9 +372,57 @@ func reportTotalForCurrency(t *testing.T, rows []any, currency string) int64 {
 	for _, row := range rows {
 		item := mustMap(t, row)
 		if item["currency_code"].(string) == currency {
-			return int64(item["total_minor"].(float64))
+			return reportAmountForItem(t, item, "total")
 		}
 	}
+	return 0
+}
+
+func reportAmountForItem(t *testing.T, item map[string]any, keyBase string) int64 {
+	t.Helper()
+
+	minorKey := keyBase + "_minor"
+	if value, ok := item[minorKey]; ok {
+		if num, ok := value.(float64); ok {
+			return int64(num)
+		}
+	}
+
+	majorKey := keyBase + "_major"
+	if value, ok := item[majorKey]; ok {
+		currency, _ := item["currency_code"].(string)
+		raw := fmt.Sprintf("%v", value)
+		sign := int64(1)
+		if strings.HasPrefix(raw, "-") {
+			sign = -1
+			raw = strings.TrimPrefix(raw, "-")
+		}
+		minor, err := domain.ParseMajorAmountToMinor(raw, currency)
+		if err != nil {
+			t.Fatalf("parse %s: %v", majorKey, err)
+		}
+		return sign * minor
+	}
+
+	signedMajorKey := keyBase + "_major_signed"
+	if value, ok := item[signedMajorKey]; ok {
+		currency, _ := item["currency_code"].(string)
+		raw := fmt.Sprintf("%v", value)
+		if strings.HasPrefix(raw, "-") {
+			minor, err := domain.ParseMajorAmountToMinor(strings.TrimPrefix(raw, "-"), currency)
+			if err != nil {
+				t.Fatalf("parse %s: %v", signedMajorKey, err)
+			}
+			return -minor
+		}
+		minor, err := domain.ParseMajorAmountToMinor(raw, currency)
+		if err != nil {
+			t.Fatalf("parse %s: %v", signedMajorKey, err)
+		}
+		return minor
+	}
+
+	t.Fatalf("missing amount field for base %q in %v", keyBase, item)
 	return 0
 }
 

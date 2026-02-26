@@ -210,8 +210,61 @@ func runReportCommand(cmd *cobra.Command, args []string, opts *RootOptions, flag
 		return printReportError(cmd, reportOutputFormat(opts), err)
 	}
 
-	env := output.NewSuccessEnvelope(result.Report, toOutputWarnings(result.Warnings))
+	reportData, err := toReportOutputData(result.Report)
+	if err != nil {
+		return printReportError(cmd, reportOutputFormat(opts), err)
+	}
+	reportWarningsRaw, err := toReportOutputWarnings(result.Warnings)
+	if err != nil {
+		return printReportError(cmd, reportOutputFormat(opts), err)
+	}
+	reportWarnings := make([]output.WarningPayload, 0, len(reportWarningsRaw))
+	for _, warning := range reportWarningsRaw {
+		reportWarnings = append(reportWarnings, output.WarningPayload{
+			Code:    warning["code"].(string),
+			Message: warning["message"].(string),
+			Details: warning["details"],
+		})
+	}
+	enhanceReportDataWithSavings(cmd, opts, reportData)
+	if links, err := loadBalanceLinks(cmd.Context(), opts); err == nil {
+		reportData["linked_accounts"] = links
+	}
+
+	env := output.NewSuccessEnvelope(reportData, reportWarnings)
 	return output.Print(cmd.OutOrStdout(), reportOutputFormat(opts), env)
+}
+
+func enhanceReportDataWithSavings(cmd *cobra.Command, opts *RootOptions, reportData map[string]any) {
+	if cmd == nil || opts == nil || reportData == nil {
+		return
+	}
+
+	svc, err := newSavingsService(opts)
+	if err != nil {
+		return
+	}
+
+	views, err := svc.Show(cmd.Context(), service.SavingsShowRequest{
+		IncludeLifetime: true,
+		IncludeRange:    false,
+	})
+	if err != nil || views.Lifetime == nil {
+		return
+	}
+
+	byCurrency := make([]map[string]any, 0, len(views.Lifetime.ByCurrency))
+	for _, row := range views.Lifetime.ByCurrency {
+		major, err := domain.FormatMinorToMajorString(row.GeneralBalanceMinor, row.CurrencyCode)
+		if err != nil {
+			continue
+		}
+		byCurrency = append(byCurrency, map[string]any{
+			"currency_code": row.CurrencyCode,
+			"total_major":   major,
+		})
+	}
+	reportData["general_balance"] = map[string]any{"by_currency": byCurrency}
 }
 
 func newReportService(opts *RootOptions) (*service.ReportService, error) {

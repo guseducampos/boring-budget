@@ -6,25 +6,25 @@
         "currency_code": "USD",
         "id": 1,
         "month_key": "2026-02",
-        "new_amount_minor": 1800,
+        "new_amount_major": "18.00",
         "old_amount_minor": null
       }
     ],
     "cap_status": [
       {
-        "cap_amount_minor": 1800,
+        "cap_amount_major": "18.00",
         "currency_code": "USD",
         "is_exceeded": false,
         "month_key": "2026-02",
-        "overspend_minor": 0,
-        "spend_total_minor": 1200
+        "overspend_major": "0.00",
+        "spend_total_major": "12.00"
       }
     ],
     "earnings": {
       "by_currency": [
         {
           "currency_code": "USD",
-          "total_minor": 5000
+          "total_major": "50.00"
         }
       ],
       "categories": [
@@ -32,23 +32,36 @@
           "category_key": "orphan",
           "category_label": "Orphan",
           "currency_code": "USD",
-          "total_minor": 5000
+          "total_major": "50.00"
         }
       ],
       "groups": [
         {
           "currency_code": "USD",
           "period_key": "2026-02-01",
-          "total_minor": 5000
+          "total_major": "50.00"
+        }
+      ]
+    },
+    "general_balance": {
+      "by_currency": [
+        {
+          "currency_code": "EUR",
+          "total_major": "-4.00"
+        },
+        {
+          "currency_code": "USD",
+          "total_major": "38.00"
         }
       ]
     },
     "grouping": "day",
+    "linked_accounts": [],
     "net": {
       "by_currency": [
         {
           "currency_code": "USD",
-          "total_minor": 3800
+          "total_major": "38.00"
         }
       ]
     },
@@ -59,15 +72,15 @@
           "instrument_key": "cash",
           "instrument_label": "Cash",
           "payment_method": "cash",
-          "total_minor": 1200
+          "total_major": "12.00"
         }
       ],
       "cash_usage": [
         {
-          "cash_total_minor": 1200,
+          "cash_total_major": "12.00",
           "currency_code": "USD",
           "share_bps": 10000,
-          "spending_total_minor": 1200
+          "spending_total_major": "12.00"
         }
       ],
       "credit_liability": [],
@@ -75,7 +88,7 @@
         "cash": [
           {
             "currency_code": "USD",
-            "total_minor": 1200
+            "total_major": "12.00"
           }
         ],
         "credit": [],
@@ -87,11 +100,19 @@
       "scope": "range",
       "to_utc": "2026-02-28T23:59:59.999999999Z"
     },
+    "period_balance": {
+      "by_currency": [
+        {
+          "currency_code": "USD",
+          "total_major": "38.00"
+        }
+      ]
+    },
     "spending": {
       "by_currency": [
         {
           "currency_code": "USD",
-          "total_minor": 1200
+          "total_major": "12.00"
         }
       ],
       "categories": [
@@ -100,14 +121,14 @@
           "category_key": "category:1",
           "category_label": "Food",
           "currency_code": "USD",
-          "total_minor": 1200
+          "total_major": "12.00"
         }
       ],
       "groups": [
         {
           "currency_code": "USD",
           "period_key": "2026-02-02",
-          "total_minor": 1200
+          "total_major": "12.00"
         }
       ]
     }

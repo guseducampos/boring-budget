@@ -181,10 +181,31 @@ func (s *ReportService) Generate(ctx context.Context, req ReportRequest) (Report
 		Earnings:       aggregate.Earnings,
 		Spending:       aggregate.Spending,
 		Net:            aggregate.Net,
+		PeriodBalance:  aggregate.Net,
+		GeneralBalance: domain.ReportNet{ByCurrency: []domain.CurrencyTotal{}},
 		PaymentMethods: nil,
 		CapStatus:      []domain.ReportCapStatus{},
 		CapChanges:     []domain.MonthlyCapChange{},
 	}
+	if period.Scope == domain.ReportScopeMonthly {
+		monthlyBalance := aggregate.Net
+		report.MonthlyBalance = &monthlyBalance
+	}
+
+	lifetimeEntries, err := s.entryReader.List(ctx, domain.EntryListFilter{
+		CategoryID:          req.CategoryID,
+		LabelIDs:            normalizedLabelIDs,
+		LabelMode:           normalizedLabelMode,
+		PaymentMethod:       normalizedPaymentMethod,
+		PaymentCardID:       req.PaymentCardID,
+		PaymentCardNickname: strings.TrimSpace(req.PaymentCardNickname),
+		PaymentCardLookup:   strings.TrimSpace(req.PaymentCardLookup),
+	})
+	if err != nil {
+		return ReportResult{}, err
+	}
+	report.GeneralBalance = domain.ReportNet{ByCurrency: netByCurrencyTotals(lifetimeEntries)}
+
 	paymentMethods := aggregate.PaymentMethods
 	if s.cardDebtReader != nil {
 		cardDebts, err := s.cardDebtReader.ShowDebtAll(ctx)
@@ -255,6 +276,33 @@ func (s *ReportService) Generate(ctx context.Context, req ReportRequest) (Report
 	warnings = append(warnings, conversionWarnings...)
 
 	return ReportResult{Report: report, Warnings: warnings}, nil
+}
+
+func netByCurrencyTotals(entries []domain.Entry) []domain.CurrencyTotal {
+	totals := map[string]int64{}
+	for _, entry := range entries {
+		switch entry.Type {
+		case domain.EntryTypeIncome:
+			totals[entry.CurrencyCode] += entry.AmountMinor
+		case domain.EntryTypeExpense:
+			totals[entry.CurrencyCode] -= entry.AmountMinor
+		}
+	}
+
+	currencies := make([]string, 0, len(totals))
+	for code := range totals {
+		currencies = append(currencies, code)
+	}
+	sort.Strings(currencies)
+
+	out := make([]domain.CurrencyTotal, 0, len(currencies))
+	for _, code := range currencies {
+		out = append(out, domain.CurrencyTotal{
+			CurrencyCode: code,
+			TotalMinor:   totals[code],
+		})
+	}
+	return out
 }
 
 func toReportCardLiability(rows []CardDebtCardSummary) []domain.ReportCardLiability {

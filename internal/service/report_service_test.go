@@ -106,12 +106,12 @@ func TestReportServiceGenerateAggregatesDeterministically(t *testing.T) {
 
 	catOne := int64(1)
 	catTwo := int64(2)
-	var capturedFilter domain.EntryListFilter
+	capturedFilters := []domain.EntryListFilter{}
 
 	svc, err := NewReportService(
 		&reportEntryReaderStub{
 			listFn: func(ctx context.Context, filter domain.EntryListFilter) ([]domain.Entry, error) {
-				capturedFilter = filter
+				capturedFilters = append(capturedFilters, filter)
 				return []domain.Entry{
 					{ID: 2, Type: domain.EntryTypeExpense, AmountMinor: 3000, CurrencyCode: "USD", TransactionDateUTC: "2026-02-11T10:00:00Z"},
 					{ID: 1, Type: domain.EntryTypeIncome, AmountMinor: 10000, CurrencyCode: "USD", TransactionDateUTC: "2026-02-10T09:00:00Z", CategoryID: &catOne},
@@ -175,17 +175,23 @@ func TestReportServiceGenerateAggregatesDeterministically(t *testing.T) {
 	}
 	report := result.Report
 
-	if capturedFilter.DateFromUTC != "2026-02-01T00:00:00Z" {
-		t.Fatalf("unexpected date_from filter: %q", capturedFilter.DateFromUTC)
+	if len(capturedFilters) != 2 {
+		t.Fatalf("expected 2 list calls, got %d", len(capturedFilters))
 	}
-	if capturedFilter.DateToUTC != "2026-02-28T23:59:59.999999999Z" {
-		t.Fatalf("unexpected date_to filter: %q", capturedFilter.DateToUTC)
+	if capturedFilters[0].DateFromUTC != "2026-02-01T00:00:00Z" {
+		t.Fatalf("unexpected date_from filter: %q", capturedFilters[0].DateFromUTC)
 	}
-	if capturedFilter.LabelMode != domain.LabelFilterModeAny {
-		t.Fatalf("expected label mode ANY, got %q", capturedFilter.LabelMode)
+	if capturedFilters[0].DateToUTC != "2026-02-28T23:59:59.999999999Z" {
+		t.Fatalf("unexpected date_to filter: %q", capturedFilters[0].DateToUTC)
 	}
-	if !reflect.DeepEqual(capturedFilter.LabelIDs, []int64{3, 9}) {
-		t.Fatalf("expected normalized labels [3 9], got %v", capturedFilter.LabelIDs)
+	if capturedFilters[0].LabelMode != domain.LabelFilterModeAny {
+		t.Fatalf("expected label mode ANY, got %q", capturedFilters[0].LabelMode)
+	}
+	if !reflect.DeepEqual(capturedFilters[0].LabelIDs, []int64{3, 9}) {
+		t.Fatalf("expected normalized labels [3 9], got %v", capturedFilters[0].LabelIDs)
+	}
+	if capturedFilters[1].DateFromUTC != "" || capturedFilters[1].DateToUTC != "" {
+		t.Fatalf("expected lifetime filter without date boundaries, got %+v", capturedFilters[1])
 	}
 
 	if !reflect.DeepEqual(report.Earnings.ByCurrency, []domain.CurrencyTotal{

@@ -100,3 +100,34 @@ func TestParseMajorAmountToMinorRejectsInvalidInput(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatMinorToMajorString(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		minor    int64
+		currency string
+		want     string
+	}{
+		{name: "usd_positive", minor: 5020, currency: "USD", want: "50.20"},
+		{name: "usd_negative", minor: -99, currency: "USD", want: "-0.99"},
+		{name: "jpy", minor: 500, currency: "JPY", want: "500"},
+		{name: "three_decimals", minor: 1234, currency: "BHD", want: "1.234"},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := FormatMinorToMajorString(tc.minor, tc.currency)
+			if err != nil {
+				t.Fatalf("FormatMinorToMajorString(%d, %q): %v", tc.minor, tc.currency, err)
+			}
+			if got != tc.want {
+				t.Fatalf("expected %q, got %q", tc.want, got)
+			}
+		})
+	}
+}

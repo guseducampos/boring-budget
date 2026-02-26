@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -147,6 +148,33 @@ func ParseMajorAmountToMinor(amount, currencyCode string) (int64, error) {
 	return minor + fractional, nil
 }
 
+func FormatMinorToMajorString(amountMinor int64, currencyCode string) (string, error) {
+	minorUnit, err := CurrencyMinorUnit(currencyCode)
+	if err != nil {
+		return "", err
+	}
+
+	absValue := uint64(amountMinor)
+	sign := ""
+	if amountMinor < 0 {
+		sign = "-"
+		absValue = uint64(-(amountMinor + 1))
+		absValue++
+	}
+
+	factor, err := uint64Pow10(minorUnit)
+	if err != nil {
+		return "", err
+	}
+	if minorUnit == 0 {
+		return fmt.Sprintf("%s%d", sign, absValue), nil
+	}
+
+	integerPart := absValue / factor
+	fractionalPart := absValue % factor
+	return fmt.Sprintf("%s%d.%0*d", sign, integerPart, minorUnit, fractionalPart), nil
+}
+
 func isDigits(value string) bool {
 	if value == "" {
 		return false
@@ -167,6 +195,21 @@ func int64Pow10(power int) (int64, error) {
 	result := int64(1)
 	for i := 0; i < power; i++ {
 		if result > math.MaxInt64/10 {
+			return 0, ErrAmountOverflow
+		}
+		result *= 10
+	}
+	return result, nil
+}
+
+func uint64Pow10(power int) (uint64, error) {
+	if power < 0 {
+		return 0, ErrInvalidAmountPrecision
+	}
+
+	result := uint64(1)
+	for i := 0; i < power; i++ {
+		if result > math.MaxUint64/10 {
 			return 0, ErrAmountOverflow
 		}
 		result *= 10
