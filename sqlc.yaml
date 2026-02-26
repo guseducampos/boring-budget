@@ -10,6 +10,9 @@ sql:
       - "internal/store/sqlite/queries/fx.sql"
       - "internal/store/sqlite/queries/settings.sql"
       - "internal/store/sqlite/queries/card.sql"
+      - "internal/store/sqlite/queries/savings.sql"
+      - "internal/store/sqlite/queries/bank_account.sql"
+      - "internal/store/sqlite/queries/schedule.sql"
     gen:
       go:
         package: "sqlc"
