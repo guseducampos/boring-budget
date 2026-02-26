@@ -86,6 +86,13 @@ func newScheduleAddCmd(opts *RootOptions) *cobra.Command {
 			if err != nil {
 				return printScheduleError(cmd, scheduleOutputFormat(opts), err)
 			}
+			if err := ensureScheduleCronRegistration(opts); err != nil {
+				return printScheduleError(cmd, scheduleOutputFormat(opts), &scheduleCLIError{
+					Code:    "INTERNAL_ERROR",
+					Message: "failed to register schedule cron job",
+					Details: map[string]any{"reason": err.Error()},
+				})
+			}
 
 			schedule, err := svc.Add(cmd.Context(), input)
 			if err != nil {

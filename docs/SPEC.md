@@ -62,7 +62,7 @@ Build an agent-friendly Go CLI for personal budgeting with:
 13. Card due-day storage and due-date queries.
 14. Savings ledger (transfer-to-savings and independent savings adds).
 15. Optional bank-account registry and balance linkage.
-16. Scheduled monthly fixed-expense templates and execution.
+16. Scheduled monthly fixed-expense templates and cron-based scheduled execution.
 
 ### 3.2 Post-MVP candidates
 
@@ -195,7 +195,8 @@ Rules:
 - Schedules represent monthly fixed expense templates (`day_of_month` in `1..28`).
 - Schedule execution is deterministic and idempotent per `(schedule_id, month_key)`.
 - Execution creates expense entries (cash default) and records generated occurrences.
-- Initial scope is manual execution (`schedule run`), not background automation/reminders.
+- On Linux, creating a schedule must ensure a managed user-cron entry exists to run `schedule run` automatically.
+- Schedule execution remains deterministic and idempotent, so repeated cron invocations are safe.
 
 ## 5) Reporting, Balance, and Queries
 
