@@ -16,6 +16,10 @@ The format follows a lightweight Keep a Changelog style.
 
 ### Added
 
+- New project skill for release operations:
+  - `skills/boring-budget-release/SKILL.md`
+  - `skills/boring-budget-release/scripts/release.sh`
+  - `skills/boring-budget-release/agents/openai.yaml`
 - Account-attributed spending/savings tracking with global-budget compatibility:
   - `migrations/0006_account_attribution.sql`
   - entries now support optional `bank_account_id` attribution on add/update/list

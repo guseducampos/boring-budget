@@ -1,0 +1,4 @@
+interface:
+  display_name: "Boring Budget Release"
+  short_description: "Automate commit, push, and release tag cut"
+  default_prompt: "Use $boring-budget-release to stage/commit changes, push the branch, cut a semver tag, and push it to trigger the release workflow."
