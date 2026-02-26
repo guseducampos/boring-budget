@@ -8,6 +8,12 @@ The format follows a lightweight Keep a Changelog style.
 
 ### Added
 
+- Account-attributed spending/savings tracking with global-budget compatibility:
+  - `migrations/0006_account_attribution.sql`
+  - entries now support optional `bank_account_id` attribution on add/update/list
+  - savings events now persist optional source/destination bank-account attribution
+  - write-time defaults from balance links (`general_balance` / `savings`) when account IDs are omitted
+  - `bank-account balance show` now replays attributed entries/savings events (supports same account linked to both targets)
 - Savings and scheduled spending feature set:
   - `migrations/0005_savings_bank_accounts_schedules.sql`
   - `internal/domain/savings.go`

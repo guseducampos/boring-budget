@@ -93,14 +93,15 @@ Use this reference when executing common `boring-budget` tasks repeatedly.
 ## 5.1) Savings, bank-account links, and schedules
 
 1. Savings ledger operations:
-   - `savings transfer add --amount ... --currency ... --date ... --output json`
-   - `savings entry add --amount ... --currency ... --date ... --output json`
+   - `savings transfer add --amount ... --currency ... --date ... [--source-account-id ...] [--destination-account-id ...] --output json`
+   - `savings entry add --amount ... --currency ... --date ... [--account-id ...] --output json`
    - `savings show --scope lifetime|range|both ... --output json`
 2. Bank-account metadata and links:
    - `bank-account add --alias ... --last4 .... --output json`
    - `bank-account list --output json`
    - `bank-account link set --target general_balance|savings --account-id <id> --output json`
    - `bank-account link clear --target general_balance|savings --output json`
+   - `bank-account balance show --scope lifetime|range|both ... --output json`
 3. Scheduled fixed expenses:
    - `schedule add --name ... --amount ... --currency ... --day 1..28 --start-month YYYY-MM --output json`
    - `schedule list --output json`

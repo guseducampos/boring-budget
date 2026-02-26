@@ -85,11 +85,15 @@ Optional fields:
 - note
 - labels (0..n)
 - payment instrument details for expenses
+- optional bank-account attribution (`bank_account_id`)
 
 Rules:
 - Missing category is treated as `Orphan`.
 - A transaction can have multiple labels.
 - Transaction updates and deletes are supported.
+- Transaction bank-account attribution:
+  - `bank_account_id` is optional for both income and expense entries.
+  - if omitted and `general_balance` is linked, the linked account is applied at write time.
 - Payment method rules:
   - `income`: payment method is not required and does not affect card debt.
   - `expense`: payment method is required logically; default is `cash` if omitted.
@@ -164,6 +168,10 @@ Rules:
 - Savings are tracked as explicit `savings_events`:
   - `transfer_to_savings` (move from general to savings)
   - `independent_add` (add directly to savings)
+- Savings events support optional bank-account attribution:
+  - `transfer_to_savings`: optional source and destination account IDs
+  - `independent_add`: optional destination account ID
+  - if omitted, account IDs default at write time from `general_balance`/`savings` links when available
 - Expense consumption source is derived deterministically per currency:
   - use general balance first
   - then consume savings when general is insufficient
@@ -178,6 +186,7 @@ Rules:
 - Two optional linkage targets exist:
   - `general_balance`
   - `savings`
+- A single bank account may be linked to both targets.
 - Linkage is mutable and non-destructive; clearing a link keeps the bank account record.
 
 ### 4.10 Scheduled payment rules
@@ -289,6 +298,7 @@ Rules:
 
 Core entities:
 - `transactions`
+- `transactions.bank_account_id` (nullable attribution to `bank_accounts`)
 - `categories`
 - `labels`
 - `transaction_labels`
@@ -297,6 +307,8 @@ Core entities:
 - `settings`
 - `fx_rate_snapshots`
 - `savings_events`
+- `savings_events.source_bank_account_id` (nullable)
+- `savings_events.destination_bank_account_id` (nullable)
 - `bank_accounts`
 - `balance_account_links`
 - `scheduled_payments`

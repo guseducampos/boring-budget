@@ -27,6 +27,7 @@ This folder defines deterministic JSON contract examples for agent integrations.
 Rules:
 - Fixtures are canonicalized in tests before comparison; JSON object key order is not semantically relevant.
 - Persistence and core transaction entities remain minor-unit based (`amount_minor`) plus `currency_code`.
+- Entry contracts may include optional bank-account attribution fields (`bank_account_id`).
 - Report contracts (`report *` and report export) expose amount fields in major-unit string form (`*_major`).
 - Human-facing commands may accept major-unit input flags (for example, `--amount`) with deterministic conversion.
 - Use ISO-8601 UTC timestamps (`...Z`).

@@ -70,6 +70,7 @@ boring-budget label add "Recurring" --output json
 boring-budget entry add --type income --amount 3500.00 --currency USD --date 2026-02-01 --note "Salary" --output json
 boring-budget entry add --type expense --amount 12.50 --currency USD --date 2026-02-11 --category-id 1 --label-id 1 --note "Lunch" --output json
 boring-budget entry add --type expense --amount 74.25 --currency USD --date 2026-02-11 --note "Coffee" --output json
+boring-budget entry add --type expense --amount 45.00 --currency USD --date 2026-02-11 --bank-account-id 1 --note "Fuel" --output json
 boring-budget entry add --type expense --amount 95.00 --currency USD --date 2026-02-11 --payment-method card --card-id 1 --note "Groceries" --output json
 boring-budget entry list --payment-method credit --from 2026-02-01 --to 2026-02-28 --output json
 
@@ -94,13 +95,16 @@ boring-budget balance show --scope both --from 2026-02-01 --to 2026-02-28 --outp
 
 # Savings
 boring-budget savings transfer add --amount 200.00 --currency USD --date 2026-02-12 --note "Emergency fund" --output json
+boring-budget savings transfer add --amount 200.00 --currency USD --date 2026-02-12 --source-account-id 1 --destination-account-id 2 --note "Emergency fund" --output json
 boring-budget savings entry add --amount 50.00 --currency USD --date 2026-02-13 --note "Gift saved" --output json
+boring-budget savings entry add --amount 50.00 --currency USD --date 2026-02-13 --account-id 2 --note "Gift saved" --output json
 boring-budget savings show --scope both --from 2026-02-01 --to 2026-02-28 --output json
 
 # Bank accounts
 boring-budget bank-account add --alias "Main Checking" --last4 1234 --output json
 boring-budget bank-account link set --target general_balance --account-id 1 --output json
 boring-budget bank-account link list --output json
+boring-budget bank-account balance show --scope both --from 2026-02-01 --to 2026-02-28 --output json
 
 # Scheduled expenses
 boring-budget schedule add --name "Rent" --amount 1500.00 --currency USD --day 5 --start-month 2026-02 --output json
