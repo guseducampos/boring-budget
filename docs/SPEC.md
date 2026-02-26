@@ -195,7 +195,7 @@ Rules:
 - Schedules represent monthly fixed expense templates (`day_of_month` in `1..28`).
 - Schedule execution is deterministic and idempotent per `(schedule_id, month_key)`.
 - Execution creates expense entries (cash default) and records generated occurrences.
-- On Linux, creating a schedule must ensure a managed user-cron entry exists to run `schedule run` automatically.
+- On Linux and macOS, creating a schedule must ensure a managed user-cron entry exists to run `schedule run` automatically.
 - Schedule execution remains deterministic and idempotent, so repeated cron invocations are safe.
 
 ## 5) Reporting, Balance, and Queries

@@ -46,9 +46,9 @@ func TestUpsertManagedCronEntryAddsOnlyOnce(t *testing.T) {
 	}
 }
 
-func TestEnsureScheduleCronRegistrationWritesCrontabOnLinux(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("cron registration is Linux-only")
+func TestEnsureScheduleCronRegistrationWritesCrontabOnSupportedPlatforms(t *testing.T) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("cron registration is supported on Linux and macOS only")
 	}
 
 	originalList := listCrontabFn

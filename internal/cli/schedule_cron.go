@@ -17,7 +17,7 @@ var (
 )
 
 func ensureScheduleCronRegistration(opts *RootOptions) error {
-	if runtime.GOOS != "linux" || opts == nil {
+	if !supportsManagedCronRegistration() || opts == nil {
 		return nil
 	}
 
@@ -54,18 +54,25 @@ func buildManagedScheduleCronEntry(execPath, absoluteDBPath string) (entry strin
 	hash := sha1.Sum([]byte(strings.TrimSpace(absoluteDBPath)))
 	key := hex.EncodeToString(hash[:])[:12]
 	marker = fmt.Sprintf("# boring-budget:schedule:%s", key)
-	lockPath := fmt.Sprintf("/tmp/boring-budget-schedule-%s.lock", key)
 	logPath := fmt.Sprintf("/tmp/boring-budget-schedule-%s.log", key)
 
 	entry = fmt.Sprintf(
-		"0 * * * * /usr/bin/flock -n %s %s --db-path %s schedule run --through-date \"$(/bin/date -u +\\%%Y-\\%%m-\\%%d)\" --output json >> %s 2>&1 %s",
-		shellQuote(lockPath),
+		"0 * * * * %s --db-path %s schedule run --through-date \"$(/bin/date -u +\\%%Y-\\%%m-\\%%d)\" --output json >> %s 2>&1 %s",
 		shellQuote(execPath),
 		shellQuote(absoluteDBPath),
 		shellQuote(logPath),
 		marker,
 	)
 	return entry, marker
+}
+
+func supportsManagedCronRegistration() bool {
+	switch runtime.GOOS {
+	case "linux", "darwin":
+		return true
+	default:
+		return false
+	}
 }
 
 func upsertManagedCronEntry(current, marker, entry string) (updated string, changed bool) {
