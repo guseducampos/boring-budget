@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -37,6 +38,51 @@ type bankAccountLinkClearFlags struct {
 	target string
 }
 
+type bankAccountBalanceShowFlags struct {
+	scope   string
+	fromRaw string
+	toRaw   string
+}
+
+type bankAccountBalanceShowRequest struct {
+	Scope           string
+	FromUTC         string
+	ToUTC           string
+	IncludeLifetime bool
+	IncludeRange    bool
+}
+
+type bankAccountCurrencyBalance struct {
+	CurrencyCode        string `json:"currency_code"`
+	GeneralBalanceMinor int64  `json:"general_balance_minor"`
+	SavingsBalanceMinor int64  `json:"savings_balance_minor"`
+	TotalBalanceMinor   int64  `json:"total_balance_minor"`
+}
+
+type bankAccountBalanceAccount struct {
+	AccountID  int64                        `json:"account_id"`
+	Alias      string                       `json:"alias"`
+	Last4      string                       `json:"last4"`
+	ByCurrency []bankAccountCurrencyBalance `json:"by_currency"`
+}
+
+type bankAccountBalanceView struct {
+	Accounts []bankAccountBalanceAccount `json:"accounts"`
+}
+
+type bankAccountBalanceRangeView struct {
+	FromUTC  string                      `json:"from_utc,omitempty"`
+	ToUTC    string                      `json:"to_utc,omitempty"`
+	Accounts []bankAccountBalanceAccount `json:"accounts"`
+}
+
+type bankAccountBalancePayload struct {
+	Scope    string                       `json:"scope"`
+	Links    []domain.BalanceAccountLink  `json:"links"`
+	Lifetime *bankAccountBalanceView      `json:"lifetime,omitempty"`
+	Range    *bankAccountBalanceRangeView `json:"range,omitempty"`
+}
+
 type bankAccountCLIError struct {
 	Code    string
 	Message string
@@ -62,7 +108,93 @@ func NewBankAccountCmd(opts *RootOptions) *cobra.Command {
 		newBankAccountUpdateCmd(opts),
 		newBankAccountDeleteCmd(opts),
 		newBankAccountLinkCmd(opts),
+		newBankAccountBalanceCmd(opts),
 	)
+
+	return cmd
+}
+
+func newBankAccountBalanceCmd(opts *RootOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "balance",
+		Short: "Show balance per bank account",
+	}
+	cmd.AddCommand(newBankAccountBalanceShowCmd(opts))
+	return cmd
+}
+
+func newBankAccountBalanceShowCmd(opts *RootOptions) *cobra.Command {
+	flags := &bankAccountBalanceShowFlags{}
+
+	cmd := &cobra.Command{
+		Use:   "show",
+		Short: "Show per-account balances from linked general/savings balances",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 0 {
+				return printBankAccountError(cmd, opts.Output, &bankAccountCLIError{
+					Code:    "INVALID_ARGUMENT",
+					Message: "bank-account balance show does not accept positional arguments",
+					Details: map[string]any{"args": args},
+				})
+			}
+
+			req, err := buildBankAccountBalanceShowRequest(flags)
+			if err != nil {
+				return printBankAccountError(cmd, opts.Output, err)
+			}
+
+			bankSvc, err := newBankAccountService(opts)
+			if err != nil {
+				return printBankAccountError(cmd, opts.Output, err)
+			}
+			savingsSvc, err := newSavingsService(opts)
+			if err != nil {
+				return printBankAccountError(cmd, opts.Output, err)
+			}
+
+			accounts, err := bankSvc.List(cmd.Context(), domain.BankAccountListFilter{IncludeDeleted: false})
+			if err != nil {
+				return printBankAccountError(cmd, opts.Output, err)
+			}
+			links, err := bankSvc.ListBalanceLinks(cmd.Context())
+			if err != nil {
+				return printBankAccountError(cmd, opts.Output, err)
+			}
+
+			savingsViews, err := savingsSvc.Show(cmd.Context(), service.SavingsShowRequest{
+				IncludeLifetime: req.IncludeLifetime,
+				IncludeRange:    req.IncludeRange,
+				RangeFromUTC:    req.FromUTC,
+				RangeToUTC:      req.ToUTC,
+			})
+			if err != nil {
+				return printBankAccountError(cmd, opts.Output, err)
+			}
+
+			payload := bankAccountBalancePayload{
+				Scope: req.Scope,
+				Links: links,
+			}
+			if req.IncludeLifetime && savingsViews.Lifetime != nil {
+				payload.Lifetime = &bankAccountBalanceView{
+					Accounts: buildAccountBalances(accounts, links, savingsViews.Lifetime.ByCurrency),
+				}
+			}
+			if req.IncludeRange && savingsViews.Range != nil {
+				payload.Range = &bankAccountBalanceRangeView{
+					FromUTC:  req.FromUTC,
+					ToUTC:    req.ToUTC,
+					Accounts: buildAccountBalances(accounts, links, savingsViews.Range.ByCurrency),
+				}
+			}
+
+			return output.Print(cmd.OutOrStdout(), opts.Output, output.NewSuccessEnvelope(payload, nil))
+		},
+	}
+
+	cmd.Flags().StringVar(&flags.scope, "scope", balanceScopeBoth, "Balance scope: lifetime|range|both")
+	cmd.Flags().StringVar(&flags.fromRaw, "from", "", "Filter start date (RFC3339 or YYYY-MM-DD)")
+	cmd.Flags().StringVar(&flags.toRaw, "to", "", "Filter end date (RFC3339 or YYYY-MM-DD)")
 
 	return cmd
 }
@@ -451,6 +583,8 @@ func codeFromBankAccountError(err error) string {
 		return "CONFLICT"
 	case errors.Is(err, domain.ErrInvalidBankAccountID),
 		errors.Is(err, domain.ErrInvalidBalanceLinkTarget),
+		errors.Is(err, domain.ErrInvalidDateRange),
+		errors.Is(err, domain.ErrInvalidTransactionDate),
 		errors.Is(err, domain.ErrBankAccountAliasRequired),
 		errors.Is(err, domain.ErrBankAccountLast4Invalid),
 		errors.Is(err, domain.ErrNoBankAccountUpdateFields),
@@ -471,6 +605,10 @@ func messageFromBankAccountError(err error) string {
 		return "bank account id must be a positive integer"
 	case errors.Is(err, domain.ErrInvalidBalanceLinkTarget):
 		return "target must be one of: general_balance|savings"
+	case errors.Is(err, domain.ErrInvalidDateRange):
+		return "from must be less than or equal to to"
+	case errors.Is(err, domain.ErrInvalidTransactionDate):
+		return "date/from/to must be RFC3339 or YYYY-MM-DD"
 	case errors.Is(err, domain.ErrBankAccountAliasRequired):
 		return "alias is required"
 	case errors.Is(err, domain.ErrBankAccountLast4Invalid):
@@ -482,4 +620,142 @@ func messageFromBankAccountError(err error) string {
 	default:
 		return "database operation failed"
 	}
+}
+
+func buildBankAccountBalanceShowRequest(flags *bankAccountBalanceShowFlags) (bankAccountBalanceShowRequest, error) {
+	if flags == nil {
+		return bankAccountBalanceShowRequest{}, &bankAccountCLIError{
+			Code:    "INTERNAL_ERROR",
+			Message: "bank-account balance flags unavailable",
+			Details: map[string]any{},
+		}
+	}
+
+	scope, err := normalizeSavingsScope(flags.scope)
+	if err != nil {
+		return bankAccountBalanceShowRequest{}, &bankAccountCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "scope must be one of: lifetime|range|both",
+			Details: map[string]any{"field": "scope", "value": flags.scope},
+		}
+	}
+
+	fromUTC, err := normalizeListDateBound(flags.fromRaw, false)
+	if err != nil {
+		return bankAccountBalanceShowRequest{}, &bankAccountCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "from must be RFC3339 or YYYY-MM-DD",
+			Details: map[string]any{"field": "from", "value": flags.fromRaw},
+		}
+	}
+	toUTC, err := normalizeListDateBound(flags.toRaw, true)
+	if err != nil {
+		return bankAccountBalanceShowRequest{}, &bankAccountCLIError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "to must be RFC3339 or YYYY-MM-DD",
+			Details: map[string]any{"field": "to", "value": flags.toRaw},
+		}
+	}
+	if err := domain.ValidateDateRange(fromUTC, toUTC); err != nil {
+		return bankAccountBalanceShowRequest{}, err
+	}
+
+	req := bankAccountBalanceShowRequest{
+		Scope:   scope,
+		FromUTC: fromUTC,
+		ToUTC:   toUTC,
+	}
+	switch scope {
+	case balanceScopeLifetime:
+		req.IncludeLifetime = true
+	case balanceScopeRange:
+		req.IncludeRange = true
+	case balanceScopeBoth:
+		req.IncludeLifetime = true
+		req.IncludeRange = true
+	}
+
+	return req, nil
+}
+
+func buildAccountBalances(accounts []domain.BankAccount, links []domain.BalanceAccountLink, totals []domain.SavingsCurrencyBalance) []bankAccountBalanceAccount {
+	generalAccountID, savingsAccountID := linkedAccountIDs(links)
+
+	type bucket struct {
+		general int64
+		savings int64
+		total   int64
+	}
+	byAccount := map[int64]map[string]bucket{}
+	for _, account := range accounts {
+		byAccount[account.ID] = map[string]bucket{}
+	}
+
+	for _, row := range totals {
+		if generalAccountID != nil {
+			entries := byAccount[*generalAccountID]
+			b := entries[row.CurrencyCode]
+			b.general += row.GeneralBalanceMinor
+			b.total += row.GeneralBalanceMinor
+			entries[row.CurrencyCode] = b
+		}
+		if savingsAccountID != nil {
+			entries := byAccount[*savingsAccountID]
+			b := entries[row.CurrencyCode]
+			b.savings += row.SavingsBalanceMinor
+			b.total += row.SavingsBalanceMinor
+			entries[row.CurrencyCode] = b
+		}
+	}
+
+	out := make([]bankAccountBalanceAccount, 0, len(accounts))
+	for _, account := range accounts {
+		currencyMap := byAccount[account.ID]
+		currencies := make([]string, 0, len(currencyMap))
+		for code := range currencyMap {
+			currencies = append(currencies, code)
+		}
+		sort.Strings(currencies)
+
+		rows := make([]bankAccountCurrencyBalance, 0, len(currencies))
+		for _, code := range currencies {
+			b := currencyMap[code]
+			rows = append(rows, bankAccountCurrencyBalance{
+				CurrencyCode:        code,
+				GeneralBalanceMinor: b.general,
+				SavingsBalanceMinor: b.savings,
+				TotalBalanceMinor:   b.total,
+			})
+		}
+
+		out = append(out, bankAccountBalanceAccount{
+			AccountID:  account.ID,
+			Alias:      account.Alias,
+			Last4:      account.Last4,
+			ByCurrency: rows,
+		})
+	}
+
+	return out
+}
+
+func linkedAccountIDs(links []domain.BalanceAccountLink) (*int64, *int64) {
+	var generalAccountID *int64
+	var savingsAccountID *int64
+
+	for _, link := range links {
+		if link.BankAccount == nil {
+			continue
+		}
+		switch link.Target {
+		case domain.BalanceLinkTargetGeneral:
+			value := link.BankAccount.ID
+			generalAccountID = &value
+		case domain.BalanceLinkTargetSavings:
+			value := link.BankAccount.ID
+			savingsAccountID = &value
+		}
+	}
+
+	return generalAccountID, savingsAccountID
 }
