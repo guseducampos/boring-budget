@@ -214,17 +214,9 @@ func runReportCommand(cmd *cobra.Command, args []string, opts *RootOptions, flag
 	if err != nil {
 		return printReportError(cmd, reportOutputFormat(opts), err)
 	}
-	reportWarningsRaw, err := toReportOutputWarnings(result.Warnings)
+	reportWarnings, err := toReportWarningPayloads(result.Warnings)
 	if err != nil {
 		return printReportError(cmd, reportOutputFormat(opts), err)
-	}
-	reportWarnings := make([]output.WarningPayload, 0, len(reportWarningsRaw))
-	for _, warning := range reportWarningsRaw {
-		reportWarnings = append(reportWarnings, output.WarningPayload{
-			Code:    warning["code"].(string),
-			Message: warning["message"].(string),
-			Details: warning["details"],
-		})
 	}
 	enhanceReportDataWithSavings(cmd, opts, reportData)
 	if links, err := loadBalanceLinks(cmd.Context(), opts); err == nil {

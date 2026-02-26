@@ -145,7 +145,10 @@ func newDataExportCmd(opts *RootOptions) *cobra.Command {
 					"period":   reportPeriod,
 					"grouping": reportReq.Grouping,
 				}
-				warnings = toOutputWarnings(result.Warnings)
+				warnings, err = toReportWarningPayloads(result.Warnings)
+				if err != nil {
+					return printReportError(cmd, reportOutputFormat(opts), err)
+				}
 			}
 
 			env := output.NewSuccessEnvelope(data, warnings)

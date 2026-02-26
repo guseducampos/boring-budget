@@ -28,6 +28,7 @@ Build an agent-friendly Go CLI for personal budgeting with:
 - Deletes are non-destructive for categories/labels/cards.
 - Money is stored in minor units only (`amount_minor`) with `currency_code`.
 - Reporting contracts expose monetary fields as major-unit strings (`*_major`), while storage remains minor-unit.
+- Report command outputs and report export artifacts (JSON/CSV, including warning details) never expose `*_minor` fields; nullable amounts are emitted as `*_major: null`.
 - Converted totals/net are optional and explicit.
 - Future-dated expense entries are checked immediately for cap warnings.
 - Time is stored in UTC; human rendering may use configured display timezone.

@@ -34,8 +34,8 @@ type dataExportEntry struct {
 }
 
 type dataExportReportFile struct {
-	Report   domain.Report    `json:"report"`
-	Warnings []domain.Warning `json:"warnings"`
+	Report   map[string]any   `json:"report"`
+	Warnings []map[string]any `json:"warnings"`
 }
 
 func TestDataCommandJSONExportImportIdempotent(t *testing.T) {
@@ -624,18 +624,33 @@ func TestDataCommandJSONExportReport(t *testing.T) {
 	}
 
 	reportFile := readReportExportFile(t, exportPath)
-	if reportFile.Report.Period.Scope != domain.ReportScopeMonthly {
-		t.Fatalf("expected exported report scope monthly, got %q", reportFile.Report.Period.Scope)
+	reportPeriod := mustMap(t, reportFile.Report["period"])
+	if reportPeriod["scope"] != domain.ReportScopeMonthly {
+		t.Fatalf("expected exported report scope monthly, got %v", reportPeriod["scope"])
 	}
-	if len(reportFile.Report.Earnings.ByCurrency) != 1 || reportFile.Report.Earnings.ByCurrency[0].TotalMinor != 12000 {
-		t.Fatalf("unexpected report earnings: %+v", reportFile.Report.Earnings.ByCurrency)
+	reportEarnings := mustMap(t, reportFile.Report["earnings"])
+	reportEarningsByCurrency := mustAnySlice(t, reportEarnings["by_currency"])
+	if len(reportEarningsByCurrency) != 1 {
+		t.Fatalf("unexpected report earnings rows: %+v", reportEarningsByCurrency)
 	}
-	if len(reportFile.Report.Spending.ByCurrency) != 1 || reportFile.Report.Spending.ByCurrency[0].TotalMinor != 3000 {
-		t.Fatalf("unexpected report spending: %+v", reportFile.Report.Spending.ByCurrency)
+	reportFirstEarnings := mustMap(t, reportEarningsByCurrency[0])
+	if reportFirstEarnings["total_major"] != "120.00" {
+		t.Fatalf("expected report earnings total_major=120.00, got %+v", reportFirstEarnings)
 	}
-	if len(reportFile.Warnings) != 1 || reportFile.Warnings[0].Code != domain.WarningCodeOrphanSpendingExceeded {
+	reportSpending := mustMap(t, reportFile.Report["spending"])
+	reportSpendingByCurrency := mustAnySlice(t, reportSpending["by_currency"])
+	if len(reportSpendingByCurrency) != 1 {
+		t.Fatalf("unexpected report spending rows: %+v", reportSpendingByCurrency)
+	}
+	reportFirstSpending := mustMap(t, reportSpendingByCurrency[0])
+	if reportFirstSpending["total_major"] != "30.00" {
+		t.Fatalf("expected report spending total_major=30.00, got %+v", reportFirstSpending)
+	}
+	if len(reportFile.Warnings) != 1 || reportFile.Warnings[0]["code"] != domain.WarningCodeOrphanSpendingExceeded {
 		t.Fatalf("expected warning in exported report file, got %+v", reportFile.Warnings)
 	}
+	assertNoMinorFieldsInPayload(t, reportFile.Report)
+	assertNoMinorFieldsInPayload(t, reportFile.Warnings)
 }
 
 func TestDataCommandCSVExportReportShape(t *testing.T) {
@@ -730,15 +745,15 @@ func TestDataCommandCSVExportReportShape(t *testing.T) {
 		"category_key",
 		"category_label",
 		"currency_code",
-		"total_minor",
+		"total_major",
 		"month_key",
-		"cap_amount_minor",
-		"spend_total_minor",
-		"overspend_minor",
+		"cap_amount_major",
+		"spend_total_major",
+		"overspend_major",
 		"is_exceeded",
 		"change_id",
-		"old_amount_minor",
-		"new_amount_minor",
+		"old_amount_major",
+		"new_amount_major",
 		"changed_at_utc",
 		"target_currency",
 		"used_estimate_rate",
@@ -765,7 +780,7 @@ func TestDataCommandCSVExportReportShape(t *testing.T) {
 	foundEarningsTotal := false
 	foundWarningRow := false
 	for _, row := range rows[1:] {
-		if row[0] == "currency_total" && row[6] == "earnings_by_currency" && row[11] == "USD" && row[12] == "12000" {
+		if row[0] == "currency_total" && row[6] == "earnings_by_currency" && row[11] == "USD" && row[12] == "120.00" {
 			foundEarningsTotal = true
 		}
 		if row[0] == "warning" && row[24] == domain.WarningCodeOrphanSpendingExceeded && strings.TrimSpace(row[25]) != "" {
@@ -950,6 +965,28 @@ func assertJSONInt64SliceEqual(t *testing.T, raw []any, expected []int64) {
 	for i := range expected {
 		if parsed[i] != expected[i] {
 			t.Fatalf("expected slice %v, got %v", expected, parsed)
+		}
+	}
+}
+
+func assertNoMinorFieldsInPayload(t *testing.T, value any) {
+	t.Helper()
+
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			if strings.Contains(key, "_minor") {
+				t.Fatalf("unexpected minor key %q in payload", key)
+			}
+			assertNoMinorFieldsInPayload(t, child)
+		}
+	case []any:
+		for _, child := range typed {
+			assertNoMinorFieldsInPayload(t, child)
+		}
+	case []map[string]any:
+		for _, child := range typed {
+			assertNoMinorFieldsInPayload(t, child)
 		}
 	}
 }

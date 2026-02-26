@@ -80,6 +80,7 @@ func TestReportCommandJSONScopesAndFilters(t *testing.T) {
 	}
 
 	monthlyData := mustMap(t, monthly["data"])
+	assertNoMinorFieldsInReportPayload(t, monthlyData)
 	monthlyPeriod := mustMap(t, monthlyData["period"])
 	if monthlyPeriod["scope"].(string) != "monthly" {
 		t.Fatalf("expected period scope monthly, got %v", monthlyPeriod["scope"])
@@ -153,6 +154,7 @@ func TestReportCommandJSONScopesAndFilters(t *testing.T) {
 	}
 
 	rangeData := mustMap(t, ranged["data"])
+	assertNoMinorFieldsInReportPayload(t, rangeData)
 	rangeEarnings := mustMap(t, rangeData["earnings"])
 	rangeSpending := mustMap(t, rangeData["spending"])
 	if got := reportTotalForCurrency(t, mustAnySlice(t, rangeEarnings["by_currency"]), "USD"); got != 5000 {
@@ -167,6 +169,7 @@ func TestReportCommandJSONScopesAndFilters(t *testing.T) {
 		t.Fatalf("expected bimonthly report ok=true payload=%v", bimonthly)
 	}
 	bimonthlyData := mustMap(t, bimonthly["data"])
+	assertNoMinorFieldsInReportPayload(t, bimonthlyData)
 	bimonthlyPeriod := mustMap(t, bimonthlyData["period"])
 	if bimonthlyPeriod["scope"].(string) != "bimonthly" {
 		t.Fatalf("expected bimonthly scope, got %v", bimonthlyPeriod["scope"])
@@ -177,6 +180,7 @@ func TestReportCommandJSONScopesAndFilters(t *testing.T) {
 		t.Fatalf("expected quarterly report ok=true payload=%v", quarterly)
 	}
 	quarterlyData := mustMap(t, quarterly["data"])
+	assertNoMinorFieldsInReportPayload(t, quarterlyData)
 	quarterlyPeriod := mustMap(t, quarterlyData["period"])
 	if quarterlyPeriod["scope"].(string) != "quarterly" {
 		t.Fatalf("expected quarterly scope, got %v", quarterlyPeriod["scope"])
@@ -224,6 +228,7 @@ func TestReportCommandJSONIncludesPaymentMethodSummaryAndLiability(t *testing.T)
 	}
 
 	data := mustMap(t, monthly["data"])
+	assertNoMinorFieldsInReportPayload(t, data)
 	paymentMethods := mustMap(t, data["payment_methods"])
 
 	byInstrument := mustAnySlice(t, paymentMethods["by_instrument"])
@@ -424,6 +429,24 @@ func reportAmountForItem(t *testing.T, item map[string]any, keyBase string) int6
 
 	t.Fatalf("missing amount field for base %q in %v", keyBase, item)
 	return 0
+}
+
+func assertNoMinorFieldsInReportPayload(t *testing.T, value any) {
+	t.Helper()
+
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			if strings.Contains(key, "_minor") {
+				t.Fatalf("unexpected minor field %q in report payload node %v", key, typed)
+			}
+			assertNoMinorFieldsInReportPayload(t, child)
+		}
+	case []any:
+		for _, child := range typed {
+			assertNoMinorFieldsInReportPayload(t, child)
+		}
+	}
 }
 
 func mustEntrySuccess(t *testing.T, payload map[string]any) {

@@ -37,6 +37,8 @@ Use this skill to run `boring-budget` commands with deterministic behavior for A
 2. Treat `ok`, `warnings[]`, `error`, and `meta` as the canonical response envelope.
 3. Persist and validate ledger money in minor units (`amount_minor`) with ISO currency codes.
 4. Report contracts (`report *`, report export) expose monetary fields as major-unit strings (`*_major`).
+   - Report payloads and report warning details never include `*_minor` keys.
+   - `data export --resource report --format csv` uses `*_major` column names and two-decimal major-unit values.
    - Report balance fields include:
      - `period_balance` (selected scope net)
      - `general_balance` (lifetime context)
@@ -122,6 +124,7 @@ boring-budget schedule run --through-date 2026-04-30 --output json
 
 # Portability
 boring-budget data export --resource entries --format json --file /tmp/entries.json --output json
+boring-budget data export --resource report --format json --file /tmp/report.json --report-scope monthly --report-month 2026-02 --report-group-by month --output json
 boring-budget data backup --file /tmp/boring-budget.db --output json
 ```
 

@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"boring-budget/internal/domain"
+	"boring-budget/internal/reporting"
 )
 
 const (
@@ -54,8 +55,8 @@ type portabilityJSONEnvelope struct {
 }
 
 type portabilityReportJSONEnvelope struct {
-	Report   domain.Report    `json:"report"`
-	Warnings []domain.Warning `json:"warnings"`
+	Report   map[string]any   `json:"report"`
+	Warnings []map[string]any `json:"warnings"`
 }
 
 func WithPortabilityReportService(reportService *ReportService) PortabilityServiceOption {
@@ -332,9 +333,18 @@ func writeEntriesCSV(filePath string, entries []domain.Entry) error {
 }
 
 func writeReportJSON(filePath string, report domain.Report, warnings []domain.Warning) error {
+	reportPayload, err := reporting.ToMajorUnitMap(report)
+	if err != nil {
+		return err
+	}
+	warningsPayload, err := reporting.ToMajorUnitMapSlice(warnings)
+	if err != nil {
+		return err
+	}
+
 	payload := portabilityReportJSONEnvelope{
-		Report:   report,
-		Warnings: warnings,
+		Report:   reportPayload,
+		Warnings: warningsPayload,
 	}
 
 	content, err := json.MarshalIndent(payload, "", "  ")
@@ -368,15 +378,15 @@ func writeReportCSV(filePath string, report domain.Report, warnings []domain.War
 		"category_key",
 		"category_label",
 		"currency_code",
-		"total_minor",
+		"total_major",
 		"month_key",
-		"cap_amount_minor",
-		"spend_total_minor",
-		"overspend_minor",
+		"cap_amount_major",
+		"spend_total_major",
+		"overspend_major",
 		"is_exceeded",
 		"change_id",
-		"old_amount_minor",
-		"new_amount_minor",
+		"old_amount_major",
+		"new_amount_major",
 		"changed_at_utc",
 		"target_currency",
 		"used_estimate_rate",
@@ -395,7 +405,7 @@ func writeReportCSV(filePath string, report domain.Report, warnings []domain.War
 		report.Period.ToUTC,
 		report.Period.MonthKey,
 	}
-	writeRow := func(recordType, section, periodKey, categoryID, categoryKey, categoryLabel, currencyCode, totalMinor, monthKey, capAmountMinor, spendTotalMinor, overspendMinor, isExceeded, changeID, oldAmountMinor, newAmountMinor, changedAtUTC, targetCurrency, usedEstimateRate, warningCode, warningMessage, warningDetailsJSON string) error {
+	writeRow := func(recordType, section, periodKey, categoryID, categoryKey, categoryLabel, currencyCode, totalMajor, monthKey, capAmountMajor, spendTotalMajor, overspendMajor, isExceeded, changeID, oldAmountMajor, newAmountMajor, changedAtUTC, targetCurrency, usedEstimateRate, warningCode, warningMessage, warningDetailsJSON string) error {
 		row := []string{
 			recordType,
 			base[0],
@@ -409,15 +419,15 @@ func writeReportCSV(filePath string, report domain.Report, warnings []domain.War
 			categoryKey,
 			categoryLabel,
 			currencyCode,
-			totalMinor,
+			totalMajor,
 			monthKey,
-			capAmountMinor,
-			spendTotalMinor,
-			overspendMinor,
+			capAmountMajor,
+			spendTotalMajor,
+			overspendMajor,
 			isExceeded,
 			changeID,
-			oldAmountMinor,
-			newAmountMinor,
+			oldAmountMajor,
+			newAmountMajor,
 			changedAtUTC,
 			targetCurrency,
 			usedEstimateRate,
@@ -433,28 +443,48 @@ func writeReportCSV(filePath string, report domain.Report, warnings []domain.War
 	}
 
 	for _, total := range report.Earnings.ByCurrency {
-		if err := writeRow("currency_total", "earnings_by_currency", "", "", "", "", total.CurrencyCode, strconv.FormatInt(total.TotalMinor, 10), "", "", "", "", "", "", "", "", "", "", "", "", "", ""); err != nil {
+		totalMajor, err := formatReportAmountMajor(total.TotalMinor, total.CurrencyCode)
+		if err != nil {
+			return err
+		}
+		if err := writeRow("currency_total", "earnings_by_currency", "", "", "", "", total.CurrencyCode, totalMajor, "", "", "", "", "", "", "", "", "", "", "", "", "", ""); err != nil {
 			return err
 		}
 	}
 	for _, total := range report.Spending.ByCurrency {
-		if err := writeRow("currency_total", "spending_by_currency", "", "", "", "", total.CurrencyCode, strconv.FormatInt(total.TotalMinor, 10), "", "", "", "", "", "", "", "", "", "", "", "", "", ""); err != nil {
+		totalMajor, err := formatReportAmountMajor(total.TotalMinor, total.CurrencyCode)
+		if err != nil {
+			return err
+		}
+		if err := writeRow("currency_total", "spending_by_currency", "", "", "", "", total.CurrencyCode, totalMajor, "", "", "", "", "", "", "", "", "", "", "", "", "", ""); err != nil {
 			return err
 		}
 	}
 	for _, total := range report.Net.ByCurrency {
-		if err := writeRow("currency_total", "net_by_currency", "", "", "", "", total.CurrencyCode, strconv.FormatInt(total.TotalMinor, 10), "", "", "", "", "", "", "", "", "", "", "", "", "", ""); err != nil {
+		totalMajor, err := formatReportAmountMajor(total.TotalMinor, total.CurrencyCode)
+		if err != nil {
+			return err
+		}
+		if err := writeRow("currency_total", "net_by_currency", "", "", "", "", total.CurrencyCode, totalMajor, "", "", "", "", "", "", "", "", "", "", "", "", "", ""); err != nil {
 			return err
 		}
 	}
 
 	for _, group := range report.Earnings.Groups {
-		if err := writeRow("group_total", "earnings_group", group.PeriodKey, "", "", "", group.CurrencyCode, strconv.FormatInt(group.TotalMinor, 10), "", "", "", "", "", "", "", "", "", "", "", "", "", ""); err != nil {
+		totalMajor, err := formatReportAmountMajor(group.TotalMinor, group.CurrencyCode)
+		if err != nil {
+			return err
+		}
+		if err := writeRow("group_total", "earnings_group", group.PeriodKey, "", "", "", group.CurrencyCode, totalMajor, "", "", "", "", "", "", "", "", "", "", "", "", "", ""); err != nil {
 			return err
 		}
 	}
 	for _, group := range report.Spending.Groups {
-		if err := writeRow("group_total", "spending_group", group.PeriodKey, "", "", "", group.CurrencyCode, strconv.FormatInt(group.TotalMinor, 10), "", "", "", "", "", "", "", "", "", "", "", "", "", ""); err != nil {
+		totalMajor, err := formatReportAmountMajor(group.TotalMinor, group.CurrencyCode)
+		if err != nil {
+			return err
+		}
+		if err := writeRow("group_total", "spending_group", group.PeriodKey, "", "", "", group.CurrencyCode, totalMajor, "", "", "", "", "", "", "", "", "", "", "", "", "", ""); err != nil {
 			return err
 		}
 	}
@@ -464,7 +494,11 @@ func writeReportCSV(filePath string, report domain.Report, warnings []domain.War
 		if category.CategoryID != nil {
 			categoryID = strconv.FormatInt(*category.CategoryID, 10)
 		}
-		if err := writeRow("category_total", "earnings_category", "", categoryID, category.CategoryKey, category.CategoryLabel, category.CurrencyCode, strconv.FormatInt(category.TotalMinor, 10), "", "", "", "", "", "", "", "", "", "", "", "", "", ""); err != nil {
+		totalMajor, err := formatReportAmountMajor(category.TotalMinor, category.CurrencyCode)
+		if err != nil {
+			return err
+		}
+		if err := writeRow("category_total", "earnings_category", "", categoryID, category.CategoryKey, category.CategoryLabel, category.CurrencyCode, totalMajor, "", "", "", "", "", "", "", "", "", "", "", "", "", ""); err != nil {
 			return err
 		}
 	}
@@ -473,25 +507,53 @@ func writeReportCSV(filePath string, report domain.Report, warnings []domain.War
 		if category.CategoryID != nil {
 			categoryID = strconv.FormatInt(*category.CategoryID, 10)
 		}
-		if err := writeRow("category_total", "spending_category", "", categoryID, category.CategoryKey, category.CategoryLabel, category.CurrencyCode, strconv.FormatInt(category.TotalMinor, 10), "", "", "", "", "", "", "", "", "", "", "", "", "", ""); err != nil {
+		totalMajor, err := formatReportAmountMajor(category.TotalMinor, category.CurrencyCode)
+		if err != nil {
+			return err
+		}
+		if err := writeRow("category_total", "spending_category", "", categoryID, category.CategoryKey, category.CategoryLabel, category.CurrencyCode, totalMajor, "", "", "", "", "", "", "", "", "", "", "", "", "", ""); err != nil {
 			return err
 		}
 	}
 
 	if report.Converted != nil {
 		usedEstimate := strconv.FormatBool(report.Converted.UsedEstimateRate)
-		if err := writeRow("converted_summary", "earnings", "", "", "", "", "", strconv.FormatInt(report.Converted.EarningsMinor, 10), "", "", "", "", "", "", "", "", "", report.Converted.TargetCurrency, usedEstimate, "", "", ""); err != nil {
+		earningsMajor, err := formatReportAmountMajor(report.Converted.EarningsMinor, report.Converted.TargetCurrency)
+		if err != nil {
 			return err
 		}
-		if err := writeRow("converted_summary", "spending", "", "", "", "", "", strconv.FormatInt(report.Converted.SpendingMinor, 10), "", "", "", "", "", "", "", "", "", report.Converted.TargetCurrency, usedEstimate, "", "", ""); err != nil {
+		if err := writeRow("converted_summary", "earnings", "", "", "", "", "", earningsMajor, "", "", "", "", "", "", "", "", "", report.Converted.TargetCurrency, usedEstimate, "", "", ""); err != nil {
 			return err
 		}
-		if err := writeRow("converted_summary", "net", "", "", "", "", "", strconv.FormatInt(report.Converted.NetMinor, 10), "", "", "", "", "", "", "", "", "", report.Converted.TargetCurrency, usedEstimate, "", "", ""); err != nil {
+		spendingMajor, err := formatReportAmountMajor(report.Converted.SpendingMinor, report.Converted.TargetCurrency)
+		if err != nil {
+			return err
+		}
+		if err := writeRow("converted_summary", "spending", "", "", "", "", "", spendingMajor, "", "", "", "", "", "", "", "", "", report.Converted.TargetCurrency, usedEstimate, "", "", ""); err != nil {
+			return err
+		}
+		netMajor, err := formatReportAmountMajor(report.Converted.NetMinor, report.Converted.TargetCurrency)
+		if err != nil {
+			return err
+		}
+		if err := writeRow("converted_summary", "net", "", "", "", "", "", netMajor, "", "", "", "", "", "", "", "", "", report.Converted.TargetCurrency, usedEstimate, "", "", ""); err != nil {
 			return err
 		}
 	}
 
 	for _, status := range report.CapStatus {
+		capAmountMajor, err := formatReportAmountMajor(status.CapAmountMinor, status.CurrencyCode)
+		if err != nil {
+			return err
+		}
+		spendTotalMajor, err := formatReportAmountMajor(status.SpendTotalMinor, status.CurrencyCode)
+		if err != nil {
+			return err
+		}
+		overspendMajor, err := formatReportAmountMajor(status.OverspendMinor, status.CurrencyCode)
+		if err != nil {
+			return err
+		}
 		if err := writeRow(
 			"cap_status",
 			"",
@@ -502,9 +564,9 @@ func writeReportCSV(filePath string, report domain.Report, warnings []domain.War
 			status.CurrencyCode,
 			"",
 			status.MonthKey,
-			strconv.FormatInt(status.CapAmountMinor, 10),
-			strconv.FormatInt(status.SpendTotalMinor, 10),
-			strconv.FormatInt(status.OverspendMinor, 10),
+			capAmountMajor,
+			spendTotalMajor,
+			overspendMajor,
 			strconv.FormatBool(status.IsExceeded),
 			"",
 			"",
@@ -521,9 +583,13 @@ func writeReportCSV(filePath string, report domain.Report, warnings []domain.War
 	}
 
 	for _, change := range report.CapChanges {
-		oldAmount := ""
-		if change.OldAmountMinor != nil {
-			oldAmount = strconv.FormatInt(*change.OldAmountMinor, 10)
+		oldAmountMajor, err := formatReportOptionalAmountMajor(change.OldAmountMinor, change.CurrencyCode)
+		if err != nil {
+			return err
+		}
+		newAmountMajor, err := formatReportAmountMajor(change.NewAmountMinor, change.CurrencyCode)
+		if err != nil {
+			return err
 		}
 		if err := writeRow(
 			"cap_change",
@@ -540,8 +606,8 @@ func writeReportCSV(filePath string, report domain.Report, warnings []domain.War
 			"",
 			"",
 			strconv.FormatInt(change.ID, 10),
-			oldAmount,
-			strconv.FormatInt(change.NewAmountMinor, 10),
+			oldAmountMajor,
+			newAmountMajor,
 			change.ChangedAtUTC,
 			"",
 			"",
@@ -556,7 +622,11 @@ func writeReportCSV(filePath string, report domain.Report, warnings []domain.War
 	for _, warning := range warnings {
 		detailsJSON := ""
 		if warning.Details != nil {
-			detailsContent, err := json.Marshal(warning.Details)
+			wrapper, err := reporting.ToMajorUnitMap(map[string]any{"details": warning.Details})
+			if err != nil {
+				return err
+			}
+			detailsContent, err := json.Marshal(wrapper["details"])
 			if err != nil {
 				return err
 			}
@@ -568,6 +638,17 @@ func writeReportCSV(filePath string, report domain.Report, warnings []domain.War
 	}
 
 	return writer.Error()
+}
+
+func formatReportAmountMajor(amountMinor int64, currencyCode string) (string, error) {
+	return domain.FormatMinorToMajorString(amountMinor, currencyCode)
+}
+
+func formatReportOptionalAmountMajor(amountMinor *int64, currencyCode string) (string, error) {
+	if amountMinor == nil {
+		return "", nil
+	}
+	return formatReportAmountMajor(*amountMinor, currencyCode)
 }
 
 func streamImportRecords(format, filePath string, consume func(portabilityEntryRecord) error) error {

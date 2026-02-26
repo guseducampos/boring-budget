@@ -364,24 +364,46 @@ func TestPortabilityServiceExportReportJSON(t *testing.T) {
 		t.Fatalf("unmarshal report export payload: %v", err)
 	}
 
-	if payload.Report.Period.Scope != domain.ReportScopeMonthly {
-		t.Fatalf("expected monthly scope, got %q", payload.Report.Period.Scope)
+	period := mustMapValue(t, payload.Report["period"])
+	if period["scope"] != domain.ReportScopeMonthly {
+		t.Fatalf("expected monthly scope, got %v", period["scope"])
 	}
-	if payload.Report.Period.MonthKey != "2026-02" {
-		t.Fatalf("expected month_key=2026-02, got %q", payload.Report.Period.MonthKey)
+	if period["month_key"] != "2026-02" {
+		t.Fatalf("expected month_key=2026-02, got %v", period["month_key"])
 	}
-	if len(payload.Report.Earnings.ByCurrency) != 1 || payload.Report.Earnings.ByCurrency[0].TotalMinor != 10000 {
-		t.Fatalf("unexpected earnings by currency: %+v", payload.Report.Earnings.ByCurrency)
+
+	earnings := mustMapValue(t, payload.Report["earnings"])
+	earningsByCurrency := mustSliceValue(t, earnings["by_currency"])
+	if len(earningsByCurrency) != 1 {
+		t.Fatalf("unexpected earnings by currency rows: %+v", earningsByCurrency)
 	}
-	if len(payload.Report.Spending.ByCurrency) != 1 || payload.Report.Spending.ByCurrency[0].TotalMinor != 2500 {
-		t.Fatalf("unexpected spending by currency: %+v", payload.Report.Spending.ByCurrency)
+	firstEarnings := mustMapValue(t, earningsByCurrency[0])
+	if firstEarnings["total_major"] != "100.00" {
+		t.Fatalf("expected earnings total_major=100.00, got %+v", firstEarnings)
 	}
-	if len(payload.Report.Spending.Categories) != 1 || payload.Report.Spending.Categories[0].CategoryLabel != "Housing" {
-		t.Fatalf("expected spending category label Housing, got %+v", payload.Report.Spending.Categories)
+
+	spending := mustMapValue(t, payload.Report["spending"])
+	spendingByCurrency := mustSliceValue(t, spending["by_currency"])
+	if len(spendingByCurrency) != 1 {
+		t.Fatalf("unexpected spending by currency rows: %+v", spendingByCurrency)
+	}
+	firstSpending := mustMapValue(t, spendingByCurrency[0])
+	if firstSpending["total_major"] != "25.00" {
+		t.Fatalf("expected spending total_major=25.00, got %+v", firstSpending)
+	}
+
+	spendingCategories := mustSliceValue(t, spending["categories"])
+	if len(spendingCategories) != 1 {
+		t.Fatalf("unexpected spending categories: %+v", spendingCategories)
+	}
+	firstCategory := mustMapValue(t, spendingCategories[0])
+	if firstCategory["category_label"] != "Housing" {
+		t.Fatalf("expected spending category label Housing, got %+v", firstCategory)
 	}
 	if len(payload.Warnings) != 0 {
 		t.Fatalf("expected no warnings in exported report payload, got %+v", payload.Warnings)
 	}
+	assertNoMinorFieldsInAny(t, payload.Report)
 }
 
 func TestPortabilityServiceExportReportCSV(t *testing.T) {
@@ -437,6 +459,11 @@ func TestPortabilityServiceExportReportCSV(t *testing.T) {
 	if rows[0][0] != "record_type" || rows[0][1] != "scope" {
 		t.Fatalf("unexpected csv header: %v", rows[0])
 	}
+	for _, header := range rows[0] {
+		if strings.Contains(header, "_minor") {
+			t.Fatalf("unexpected minor column in report csv header: %q", header)
+		}
+	}
 	if rows[1][0] != "report_meta" {
 		t.Fatalf("expected first data row to be report_meta, got %v", rows[1])
 	}
@@ -447,7 +474,7 @@ func TestPortabilityServiceExportReportCSV(t *testing.T) {
 		if len(row) != len(rows[0]) {
 			t.Fatalf("expected stable csv column width, got row=%v", row)
 		}
-		if row[0] == "currency_total" && row[6] == "earnings_by_currency" && row[11] == "USD" && row[12] == "7000" {
+		if row[0] == "currency_total" && row[6] == "earnings_by_currency" && row[11] == "USD" && row[12] == "70.00" {
 			foundEarnings = true
 		}
 		if row[0] == "warning" && row[24] == domain.WarningCodeOrphanSpendingExceeded {
@@ -663,6 +690,44 @@ func activePortabilityTransactionCount(t *testing.T, ctx context.Context, db *sq
 	}
 
 	return count
+}
+
+func mustMapValue(t *testing.T, value any) map[string]any {
+	t.Helper()
+
+	typed, ok := value.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map value, got %T", value)
+	}
+	return typed
+}
+
+func mustSliceValue(t *testing.T, value any) []any {
+	t.Helper()
+
+	typed, ok := value.([]any)
+	if !ok {
+		t.Fatalf("expected slice value, got %T", value)
+	}
+	return typed
+}
+
+func assertNoMinorFieldsInAny(t *testing.T, value any) {
+	t.Helper()
+
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			if strings.Contains(key, "_minor") {
+				t.Fatalf("unexpected minor key %q in payload", key)
+			}
+			assertNoMinorFieldsInAny(t, child)
+		}
+	case []any:
+		for _, child := range typed {
+			assertNoMinorFieldsInAny(t, child)
+		}
+	}
 }
 
 type nonTransactionalEntryRepo struct{}

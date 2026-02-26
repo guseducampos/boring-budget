@@ -6,6 +6,13 @@ The format follows a lightweight Keep a Changelog style.
 
 ## [Unreleased]
 
+### Changed
+
+- Report outputs now consistently expose major-unit strings only:
+  - `report *` responses and report warning details no longer include `*_minor` keys (nullable amounts are emitted as `*_major: null`)
+  - `data export --resource report --format json` now writes major-unit report payloads and warning details
+  - `data export --resource report --format csv` now uses `*_major` column names and two-decimal major-unit values
+
 ### Added
 
 - Account-attributed spending/savings tracking with global-budget compatibility:
